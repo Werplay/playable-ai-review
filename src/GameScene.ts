@@ -1,0 +1,784 @@
+import * as Phaser from 'phaser';
+import { sdk } from '@smoud/playable-sdk';
+import {
+  BOSS_AT, ENEMIES, EnemyDef, FONT, GEMS, IMAGES, MINIBOSS_AT, PLAYER, SKILLS, SKILL_BY_ID,
+  SkillDef, WAVES, xpForLevel
+} from './data';
+import { Hud } from './Hud';
+
+const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
+
+interface Enemy {
+  id: number;
+  spr: Phaser.GameObjects.Image;
+  def: EnemyDef;
+  hp: number;
+  maxHp: number;
+  flash: number;
+  knockX: number;
+  knockY: number;
+}
+
+interface Proj {
+  spr: Phaser.GameObjects.Image;
+  vx: number;
+  vy: number;
+  dmg: number;
+  life: number;
+  pierce: number;
+  kind: 'straight' | 'boomerang' | 'bounce' | 'orbit';
+  spin: number;
+  /** orbit params */
+  orbitAngle?: number;
+  orbitRadius?: number;
+  orbitSpeed?: number;
+  /** boomerang params */
+  t?: number;
+  originX?: number;
+  originY?: number;
+  /** per-enemy re-hit gate for multi-hit weapons */
+  hits?: Record<number, number>;
+}
+
+interface Pickup {
+  spr: Phaser.GameObjects.Image;
+  xp: number;
+  heal: number;
+  vx: number;
+  vy: number;
+  drag: number;
+  pulled: boolean;
+}
+
+/** One owned skill: level + accumulated cooldown timer. */
+interface Owned {
+  def: SkillDef;
+  level: number;
+  cd: number;
+}
+
+export class GameScene extends Phaser.Scene {
+  // world
+  private player!: Phaser.GameObjects.Image;
+  private shadow!: Phaser.GameObjects.Ellipse;
+  private sky!: Phaser.GameObjects.Image;
+  private cloudsFar!: Phaser.GameObjects.TileSprite;
+  private cloudsNear!: Phaser.GameObjects.TileSprite;
+
+  private enemies: Enemy[] = [];
+  private projs: Proj[] = [];
+  private pickups: Pickup[] = [];
+  private enemyId = 0;
+
+  // input
+  private joyBase!: Phaser.GameObjects.Arc;
+  private joyKnob!: Phaser.GameObjects.Arc;
+  private joyPointer: number | null = null;
+  private joyOrigin = new Phaser.Math.Vector2();
+  private move = new Phaser.Math.Vector2();
+  private vel = new Phaser.Math.Vector2();
+
+  // run state
+  public state: 'intro' | 'play' | 'levelup' | 'over' = 'intro';
+  public elapsed = 0;
+  public kills = 0;
+  public wave = 1;
+  public level = 1;
+  public xp = 0;
+  public xpNeed = xpForLevel(1);
+  public hp = PLAYER.health;
+  public maxHp = PLAYER.health;
+
+  private owned = new Map<string, Owned>();
+  private spawnCd = 0;
+  private miniBossSpawned = false;
+  private bossSpawned = false;
+  private boss: Enemy | null = null;
+  private hurtCd = 0;
+  private regen = 0;
+
+  private hud!: Hud;
+
+  constructor() {
+    super({ key: 'GameScene' });
+  }
+
+  // ---------------------------------------------------------------- preload
+  preload() {
+    for (const key in IMAGES) this.load.image(key, IMAGES[key]);
+  }
+
+  // ----------------------------------------------------------------- create
+  create() {
+    const cam = this.cameras.main;
+
+    this.sky = this.add.image(0, 0, 'sky').setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH.bg);
+    this.cloudsFar = this.add
+      .tileSprite(0, 0, 10, 10, 'clouds1')
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setAlpha(0.4)
+      .setTileScale(0.5)
+      .setDepth(DEPTH.bg + 1);
+    this.cloudsNear = this.add
+      .tileSprite(0, 0, 10, 10, 'clouds2')
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setAlpha(0.75)
+      .setTileScale(0.8)
+      .setDepth(DEPTH.bg + 2);
+
+    this.shadow = this.add.ellipse(0, 0, 90, 26, 0x0a2233, 0.22).setDepth(DEPTH.player - 1);
+    this.player = this.add.image(0, 0, 'player').setDepth(DEPTH.player).setScale(0.62);
+
+    cam.startFollow(this.player, false, 0.12, 0.12);
+    cam.setBackgroundColor('#57bdf9');
+
+    // virtual joystick — appears wherever the finger lands
+    this.joyBase = this.add.circle(0, 0, 62, 0xffffff, 0.16).setScrollFactor(0).setDepth(90).setVisible(false);
+    this.joyBase.setStrokeStyle(4, 0xffffff, 0.5);
+    this.joyKnob = this.add.circle(0, 0, 28, 0xffffff, 0.55).setScrollFactor(0).setDepth(91).setVisible(false);
+
+    this.input.addPointer(2);
+    this.input.on('pointerdown', this.onDown, this);
+    this.input.on('pointermove', this.onMove, this);
+    this.input.on('pointerup', this.onUp, this);
+
+    this.addSkill('multicanon');
+
+    this.hud = new Hud(this);
+    this.hud.showIntro();
+
+    (window as any).__scene = this; // TEMP debug hook
+    this.resize(cam.width, cam.height);
+    sdk.start();
+  }
+
+  // ------------------------------------------------------------------ input
+  private onDown(p: Phaser.Input.Pointer) {
+    if (this.state === 'intro') this.begin();
+    if (this.state !== 'play' || this.joyPointer !== null) return;
+    this.joyPointer = p.id;
+    this.joyOrigin.set(p.x, p.y);
+    this.joyBase.setPosition(p.x, p.y).setVisible(true);
+    this.joyKnob.setPosition(p.x, p.y).setVisible(true);
+  }
+
+  private onMove(p: Phaser.Input.Pointer) {
+    if (p.id !== this.joyPointer) return;
+    const d = new Phaser.Math.Vector2(p.x - this.joyOrigin.x, p.y - this.joyOrigin.y);
+    const len = Math.min(d.length(), 62);
+    if (d.length() > 0) d.normalize();
+    this.move.copy(d).scale(Math.min(len / 46, 1));
+    this.joyKnob.setPosition(this.joyOrigin.x + d.x * len, this.joyOrigin.y + d.y * len);
+  }
+
+  private onUp(p: Phaser.Input.Pointer) {
+    if (p.id !== this.joyPointer) return;
+    this.joyPointer = null;
+    this.move.set(0, 0);
+    this.joyBase.setVisible(false);
+    this.joyKnob.setVisible(false);
+  }
+
+  private begin() {
+    this.state = 'play';
+    this.hud.hideIntro();
+  }
+
+  // ------------------------------------------------------------------ stats
+  /** Stacking multiplier for a passive: (1 + step)^level, matching the in-game +X% per level. */
+  private lvlOf(id: string) {
+    return this.owned.get(id)?.level ?? 0;
+  }
+
+  private get atkMul() {
+    return Math.pow(1.1, this.lvlOf('attack'));
+  }
+  private get speedMul() {
+    return Math.pow(1.1, this.lvlOf('speed'));
+  }
+  private get armorMul() {
+    return Math.pow(0.9, this.lvlOf('armor'));
+  }
+  private get magnetRadius() {
+    return PLAYER.pickupRadius * (1 + this.lvlOf('magnet'));
+  }
+  private get xpMul() {
+    return Math.pow(1.08, this.lvlOf('xp'));
+  }
+  private get cdMul() {
+    return Math.pow(0.92, this.lvlOf('cooldown'));
+  }
+  private get projSpeedMul() {
+    return Math.pow(1.1, this.lvlOf('bulletspeed'));
+  }
+
+  public addSkill(id: string) {
+    const cur = this.owned.get(id);
+    if (cur) {
+      cur.level = Math.min(cur.level + 1, cur.def.max);
+    } else {
+      const def = SKILL_BY_ID.get(id)!;
+      this.owned.set(id, { def, level: 1, cd: 0 });
+      if (def.id === 'shield' || def.id === 'propeller') this.buildOrbit(def.id);
+    }
+    if (id === 'health') {
+      const before = this.maxHp;
+      this.maxHp = PLAYER.health * Math.pow(1.2, this.lvlOf('health'));
+      this.hp += this.maxHp - before;
+    }
+    if (id === 'shield' || id === 'propeller') this.buildOrbit(id);
+  }
+
+  public ownedList() {
+    return [...this.owned.values()];
+  }
+
+  /** Three cards, at least one of them an active weapon while the loadout is thin. */
+  public rollChoices(): { def: SkillDef; level: number }[] {
+    const pool = SKILLS.filter((s) => (this.owned.get(s.id)?.level ?? 0) < s.max);
+    const weapons = pool.filter((s) => s.kind === 'weapon');
+    const out: SkillDef[] = [];
+    const activeCount = [...this.owned.values()].filter((o) => o.def.kind === 'weapon').length;
+    if (activeCount < 4 && weapons.length) out.push(Phaser.Utils.Array.GetRandom(weapons));
+    const rest = Phaser.Utils.Array.Shuffle(pool.filter((s) => !out.includes(s)));
+    while (out.length < 3 && rest.length) out.push(rest.pop()!);
+    return out.map((def) => ({ def, level: (this.owned.get(def.id)?.level ?? 0) + 1 }));
+  }
+
+  // ------------------------------------------------------------------ update
+  update(_time: number, deltaMs: number) {
+    const dt = Math.min(deltaMs, 50) / 1000;
+    this.drawBackground();
+    if (this.state !== 'play') {
+      this.hud.update(dt);
+      return;
+    }
+
+    this.elapsed += dt;
+    this.updatePlayer(dt);
+    this.updateSpawner(dt);
+    this.updateEnemies(dt);
+    this.updateWeapons(dt);
+    this.updateProjectiles(dt);
+    this.updatePickups(dt);
+    this.hud.update(dt);
+
+    if (this.boss && this.boss.hp <= 0) this.finishRun(true);
+    if (this.elapsed > BOSS_AT + 75) this.finishRun(true);
+  }
+
+  private drawBackground() {
+    const cam = this.cameras.main;
+    this.sky.setPosition(cam.width / 2, cam.height / 2).setDisplaySize(cam.width, cam.height);
+    for (const [layer, f] of [
+      [this.cloudsFar, 0.12],
+      [this.cloudsNear, 0.3]
+    ] as [Phaser.GameObjects.TileSprite, number][]) {
+      layer.setPosition(cam.width / 2, cam.height / 2).setSize(cam.width, cam.height);
+      layer.tilePositionX = cam.scrollX * f;
+      layer.tilePositionY = cam.scrollY * f;
+    }
+  }
+
+  private updatePlayer(dt: number) {
+    const target = this.move.clone().scale(PLAYER.speed * this.speedMul);
+    this.vel.lerp(target, Math.min(1, PLAYER.accel * dt));
+    this.player.x += this.vel.x * dt;
+    this.player.y += this.vel.y * dt;
+
+    if (this.vel.lengthSq() > 400) {
+      const a = Math.atan2(this.vel.y, this.vel.x);
+      const left = Math.abs(a) > Math.PI / 2;
+      this.player.setFlipY(left);
+      this.player.setRotation(left ? a + Math.PI : a);
+    }
+    this.player.y += Math.sin(this.elapsed * 3) * 0.25;
+    this.shadow.setPosition(this.player.x + 8, this.player.y + 46);
+
+    this.hurtCd = Math.max(0, this.hurtCd - dt);
+    const regenLvl = this.lvlOf('health');
+    if (regenLvl) {
+      this.regen += dt;
+      if (this.regen >= 1) {
+        this.regen = 0;
+        this.hp = Math.min(this.maxHp, this.hp + regenLvl * 0.4);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- spawning
+  private updateSpawner(dt: number) {
+    const wave = WAVES.find((w) => this.elapsed >= w.start && this.elapsed < w.end) ?? WAVES[WAVES.length - 1];
+    this.wave = WAVES.indexOf(wave) + 1;
+
+    if (!this.miniBossSpawned && this.elapsed >= MINIBOSS_AT) {
+      this.miniBossSpawned = true;
+      this.spawn('hammerhead');
+      this.hud.banner('LARGE GROUP INCOMING');
+    }
+    if (!this.bossSpawned && this.elapsed >= BOSS_AT) {
+      this.bossSpawned = true;
+      this.boss = this.spawn('boss');
+      this.hud.banner('BOSS INCOMING');
+    }
+
+    this.spawnCd -= dt;
+    if (this.spawnCd > 0 || this.enemies.length >= wave.cap) return;
+    this.spawnCd = wave.interval;
+    for (let i = 0; i < wave.burst; i++) this.spawn(Phaser.Utils.Array.GetRandom(wave.pool));
+  }
+
+  private spawn(type: string): Enemy {
+    const def = ENEMIES[type];
+    const cam = this.cameras.main;
+    const dist = Math.hypot(cam.width, cam.height) / 2 + 90;
+    const a = Math.random() * Math.PI * 2;
+    const spr = this.add
+      .image(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
+      .setDepth(DEPTH.enemy)
+      .setScale(def.scale);
+    // difficulty ramps with elapsed time the way the stage timer does in-game
+    const ramp = 1 + this.elapsed / 70;
+    const e: Enemy = {
+      id: ++this.enemyId,
+      spr,
+      def,
+      hp: def.hp * ramp,
+      maxHp: def.hp * ramp,
+      flash: 0,
+      knockX: 0,
+      knockY: 0
+    };
+    this.enemies.push(e);
+    return e;
+  }
+
+  private updateEnemies(dt: number) {
+    const px = this.player.x;
+    const py = this.player.y;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = px - e.spr.x;
+      const dy = py - e.spr.y;
+      const d = Math.hypot(dx, dy) || 1;
+
+      e.knockX *= 0.86;
+      e.knockY *= 0.86;
+      e.spr.x += (dx / d) * e.def.speed * dt + e.knockX * dt;
+      e.spr.y += (dy / d) * e.def.speed * dt + e.knockY * dt;
+      e.spr.setFlipX(dx < 0);
+      e.spr.setRotation(Phaser.Math.Clamp(dy / d, -0.5, 0.5) * (dx < 0 ? -0.35 : 0.35));
+
+      if (e.flash > 0) {
+        e.flash -= dt;
+        if (e.flash <= 0) e.spr.clearTint();
+      }
+
+      if (d < e.def.radius + 34 && this.hurtCd <= 0) {
+        this.damagePlayer(e.def.damage);
+        e.knockX = (-dx / d) * 260;
+        e.knockY = (-dy / d) * 260;
+      }
+    }
+  }
+
+  private damagePlayer(amount: number) {
+    this.hurtCd = 0.55;
+    this.hp -= amount * this.armorMul;
+    this.cameras.main.shake(120, 0.006);
+    this.player.setTintFill(0xff4444);
+    this.time.delayedCall(90, () => this.player.clearTint());
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.finishRun(false);
+    }
+  }
+
+  private hurtEnemy(e: Enemy, dmg: number, fromX: number, fromY: number) {
+    e.hp -= dmg;
+    e.flash = 0.08;
+    e.spr.setTintFill(0xffffff);
+    const dx = e.spr.x - fromX;
+    const dy = e.spr.y - fromY;
+    const d = Math.hypot(dx, dy) || 1;
+    if (!e.def.boss) {
+      e.knockX += (dx / d) * 120;
+      e.knockY += (dy / d) * 120;
+    }
+    if (e.hp <= 0) this.killEnemy(e);
+  }
+
+  private killEnemy(e: Enemy) {
+    const idx = this.enemies.indexOf(e);
+    if (idx < 0) return;
+    this.enemies.splice(idx, 1);
+    this.kills++;
+
+    const gem = GEMS[e.def.gem];
+    this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);
+    if (Math.random() < 0.04) this.dropPickup(e.spr.x, e.spr.y, 'meat', 0, 18, 0.8);
+    if (e.def.boss) {
+      for (let i = 0; i < 12; i++) {
+        const g = GEMS[2];
+        this.dropPickup(e.spr.x, e.spr.y, g.key, g.xp, 0, 1);
+      }
+      this.cameras.main.shake(400, 0.02);
+    }
+
+    const spr = e.spr;
+    spr.setTintFill(0xffffff);
+    this.tweens.add({
+      targets: spr,
+      scale: spr.scale * 1.5,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => spr.destroy()
+    });
+    if (e === this.boss) this.boss = { ...e, hp: 0 };
+  }
+
+  private dropPickup(x: number, y: number, key: string, xp: number, heal: number, scale: number) {
+    const a = Math.random() * Math.PI * 2;
+    const spr = this.add
+      .image(x, y, key)
+      .setDepth(DEPTH.pickup)
+      .setScale(scale * 0.85);
+    this.pickups.push({
+      spr,
+      xp,
+      heal,
+      vx: Math.cos(a) * 55,
+      vy: Math.sin(a) * 55,
+      drag: 6,
+      pulled: false
+    });
+  }
+
+  private updatePickups(dt: number) {
+    const r = this.magnetRadius;
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const p = this.pickups[i];
+      const dx = this.player.x - p.spr.x;
+      const dy = this.player.y - p.spr.y;
+      const d = Math.hypot(dx, dy) || 1;
+
+      if (p.pulled || d < r) {
+        p.pulled = true;
+        const pull = 760;
+        p.vx += (dx / d) * pull * dt;
+        p.vy += (dy / d) * pull * dt;
+        p.drag = 1.2;
+      }
+      p.vx -= p.vx * p.drag * dt;
+      p.vy -= p.vy * p.drag * dt;
+      p.spr.x += p.vx * dt;
+      p.spr.y += p.vy * dt;
+
+      if (d < 30) {
+        if (p.xp) this.addXp(p.xp);
+        if (p.heal) this.hp = Math.min(this.maxHp, this.hp + p.heal);
+        p.spr.destroy();
+        this.pickups.splice(i, 1);
+      }
+    }
+  }
+
+  private addXp(amount: number) {
+    this.xp += amount * this.xpMul;
+    while (this.xp >= this.xpNeed) {
+      this.xp -= this.xpNeed;
+      this.level++;
+      this.xpNeed = xpForLevel(this.level);
+      this.levelUp();
+    }
+  }
+
+  private levelUp() {
+    if (this.state === 'over') return;
+    this.state = 'levelup';
+    this.move.set(0, 0);
+    this.vel.set(0, 0);
+    this.joyPointer = null;
+    this.joyBase.setVisible(false);
+    this.joyKnob.setVisible(false);
+    this.hud.openLevelUp();
+  }
+
+  public closeLevelUp(id: string) {
+    this.addSkill(id);
+    this.state = this.hp > 0 ? 'play' : 'over';
+  }
+
+  // ---------------------------------------------------------------- weapons
+  private nearestEnemy(maxDist = 1e9): Enemy | null {
+    let best: Enemy | null = null;
+    let bestD = maxDist * maxDist;
+    for (const e of this.enemies) {
+      const d = Phaser.Math.Distance.Squared(e.spr.x, e.spr.y, this.player.x, this.player.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  private updateWeapons(dt: number) {
+    for (const o of this.owned.values()) {
+      if (o.def.kind !== 'weapon') continue;
+      if (o.def.id === 'shield' || o.def.id === 'propeller') continue; // persistent orbits
+      o.cd -= dt;
+      if (o.cd > 0) continue;
+      o.cd = this.fire(o) * this.cdMul;
+    }
+  }
+
+  /** Fires one volley of the given weapon and returns its cooldown in seconds. */
+  private fire(o: Owned): number {
+    const lvl = o.level;
+    const atk = PLAYER.attack * this.atkMul;
+    const sp = this.projSpeedMul;
+    const target = this.nearestEnemy(900);
+    const aim = target
+      ? Math.atan2(target.spr.y - this.player.y, target.spr.x - this.player.x)
+      : this.player.rotation * (this.player.flipY ? -1 : 1);
+
+    switch (o.def.id) {
+      case 'multicanon': {
+        const n = 1 + Math.floor(lvl / 2);
+        for (let i = 0; i < n; i++) {
+          const a = aim + (i - (n - 1) / 2) * 0.16;
+          this.shoot('bullet', a, 660 * sp, atk * (1.2 + lvl * 0.35), 1.2, 1, 1.0);
+        }
+        return 0.55 - lvl * 0.03;
+      }
+      case 'warmachine': {
+        for (const off of [-12, 12]) {
+          const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
+          const p = this.shoot('bullet_long', a, 880 * sp, atk * (0.7 + lvl * 0.2), 1.1, 1, 0.9);
+          p.spr.x += Math.cos(aim + Math.PI / 2) * off;
+          p.spr.y += Math.sin(aim + Math.PI / 2) * off;
+        }
+        return 0.16 - lvl * 0.012;
+      }
+      case 'razorfin': {
+        const n = 1 + Math.floor((lvl - 1) / 2);
+        for (let i = 0; i < n; i++) {
+          const a = aim + (i - (n - 1) / 2) * 0.3;
+          this.shoot('w_fish', a, 540 * sp, atk * (1.6 + lvl * 0.5), 1.6, 2 + lvl, 1.9, 10);
+        }
+        return 1.1 - lvl * 0.07;
+      }
+      case 'croissant': {
+        const n = 1 + Math.floor(lvl / 2);
+        for (let i = 0; i < n; i++) {
+          const a = aim + (i / n) * Math.PI * 2;
+          const p = this.shoot('w_croissant', a, 420 * sp, atk * (1.4 + lvl * 0.45), 1.9, 999, 2.1, 9);
+          p.kind = 'boomerang';
+          p.t = 0;
+          p.hits = {};
+        }
+        return 1.6 - lvl * 0.1;
+      }
+      case 'yarnball': {
+        const n = 1 + Math.floor(lvl / 2);
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const p = this.shoot('w_yarnball', a, 340 * sp, atk * (1.5 + lvl * 0.5), 5, 999, 2.2, 6);
+          p.kind = 'bounce';
+          p.hits = {};
+        }
+        return 2.4 - lvl * 0.15;
+      }
+      case 'lightning': {
+        const strikes = 1 + lvl;
+        const dmg = atk * (2.4 + lvl * 0.8);
+        for (let i = 0; i < strikes; i++) {
+          this.time.delayedCall(i * 110, () => {
+            if (this.state === 'over') return;
+            const pick = Phaser.Utils.Array.GetRandom(
+              this.enemies.filter(
+                (e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 520
+              )
+            ) as Enemy | undefined;
+            if (!pick) return;
+            this.strike(pick.spr.x, pick.spr.y, dmg, 70 + lvl * 8);
+          });
+        }
+        return 3.2 - lvl * 0.2;
+      }
+    }
+    return 1;
+  }
+
+  private shoot(
+    key: string,
+    angle: number,
+    speed: number,
+    dmg: number,
+    life: number,
+    pierce: number,
+    scale: number,
+    spin = 0
+  ): Proj {
+    const spr = this.add
+      .image(this.player.x, this.player.y, key)
+      .setDepth(DEPTH.proj)
+      .setScale(scale)
+      .setRotation(angle);
+    const p: Proj = {
+      spr,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      dmg,
+      life,
+      pierce,
+      kind: 'straight',
+      spin,
+      originX: this.player.x,
+      originY: this.player.y
+    };
+    this.projs.push(p);
+    return p;
+  }
+
+  /** Shockwave Strike: instant AoE flash. */
+  private strike(x: number, y: number, dmg: number, radius: number) {
+    const ring = this.add.circle(x, y, radius, 0x9adcff, 0.55).setDepth(DEPTH.fx);
+    ring.setStrokeStyle(6, 0xffffff, 0.9);
+    this.tweens.add({
+      targets: ring,
+      scale: 1.5,
+      alpha: 0,
+      duration: 240,
+      onComplete: () => ring.destroy()
+    });
+    for (const e of [...this.enemies]) {
+      if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, x, y) < radius + e.def.radius) {
+        this.hurtEnemy(e, dmg, x, y);
+      }
+    }
+  }
+
+  /** (Re)build the orbiting weapons so their count/radius match the current level. */
+  private buildOrbit(id: string) {
+    for (let i = this.projs.length - 1; i >= 0; i--) {
+      const p = this.projs[i];
+      if (p.kind === 'orbit' && p.spr.texture.key === (id === 'shield' ? 'w_shield' : 'w_propeller')) {
+        p.spr.destroy();
+        this.projs.splice(i, 1);
+      }
+    }
+    const lvl = this.lvlOf(id);
+    if (!lvl) return;
+    const count = id === 'shield' ? 1 : 1 + lvl;
+    for (let i = 0; i < count; i++) {
+      const spr = this.add
+        .image(this.player.x, this.player.y, id === 'shield' ? 'w_shield' : 'w_propeller')
+        .setDepth(DEPTH.proj - 1)
+        .setScale(id === 'shield' ? 0.55 + lvl * 0.12 : 1.5);
+      if (id === 'shield') spr.setAlpha(0.85);
+      this.projs.push({
+        spr,
+        vx: 0,
+        vy: 0,
+        dmg: 0,
+        life: 1e9,
+        pierce: 999,
+        kind: 'orbit',
+        spin: id === 'shield' ? 1.4 : 14,
+        orbitAngle: (i / count) * Math.PI * 2,
+        orbitRadius: id === 'shield' ? 0 : 92 + lvl * 6,
+        orbitSpeed: id === 'shield' ? 0 : 3.1,
+        hits: {}
+      });
+    }
+  }
+
+  private updateProjectiles(dt: number) {
+    const atk = PLAYER.attack * this.atkMul;
+    const now = this.elapsed;
+
+    for (let i = this.projs.length - 1; i >= 0; i--) {
+      const p = this.projs[i];
+
+      if (p.kind === 'orbit') {
+        const isShield = p.spr.texture.key === 'w_shield';
+        const lvl = this.lvlOf(isShield ? 'shield' : 'propeller');
+        p.orbitAngle! += p.orbitSpeed! * dt;
+        p.spr.x = this.player.x + Math.cos(p.orbitAngle!) * p.orbitRadius!;
+        p.spr.y = this.player.y + Math.sin(p.orbitAngle!) * p.orbitRadius!;
+        p.spr.rotation += p.spin * dt;
+        p.dmg = atk * (isShield ? 0.55 + lvl * 0.2 : 1.1 + lvl * 0.35);
+      } else {
+        if (p.kind === 'boomerang') {
+          // out-and-back arc, then it returns to the plane and expires
+          p.t! += dt;
+          const k = 1 - p.t! / p.life;
+          p.spr.x += p.vx * k * dt;
+          p.spr.y += p.vy * k * dt;
+          const back = 1 - k;
+          p.spr.x += (this.player.x - p.spr.x) * back * 2.4 * dt;
+          p.spr.y += (this.player.y - p.spr.y) * back * 2.4 * dt;
+        } else {
+          p.spr.x += p.vx * dt;
+          p.spr.y += p.vy * dt;
+        }
+        if (p.spin) p.spr.rotation += p.spin * dt;
+        p.life -= dt;
+        if (p.life <= 0) {
+          p.spr.destroy();
+          this.projs.splice(i, 1);
+          continue;
+        }
+      }
+
+      // hit test
+      for (const e of [...this.enemies]) {
+        const hitR = e.def.radius + 14;
+        if (Phaser.Math.Distance.Squared(e.spr.x, e.spr.y, p.spr.x, p.spr.y) > hitR * hitR) continue;
+        if (p.hits) {
+          if ((p.hits[e.id] ?? 0) > now) continue;
+          p.hits[e.id] = now + 0.3;
+        }
+        this.hurtEnemy(e, p.dmg, p.spr.x, p.spr.y);
+        if (p.kind === 'bounce') {
+          const a = Math.atan2(p.spr.y - e.spr.y, p.spr.x - e.spr.x);
+          const s = Math.hypot(p.vx, p.vy);
+          p.vx = Math.cos(a) * s;
+          p.vy = Math.sin(a) * s;
+        }
+        if (!p.hits) {
+          p.pierce--;
+          if (p.pierce <= 0) {
+            p.spr.destroy();
+            this.projs.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------- end
+  private finishRun(won: boolean) {
+    if (this.state === 'over') return;
+    this.state = 'over';
+    this.move.set(0, 0);
+    this.joyBase.setVisible(false);
+    this.joyKnob.setVisible(false);
+    this.hud.showEnd(won);
+    sdk.finish();
+  }
+
+  // ---------------------------------------------------------------- resize
+  public resize(width: number, height: number) {
+    this.cameras.resize(width, height);
+    this.drawBackground();
+    this.hud?.resize(width, height);
+  }
+}
+
+export { DEPTH, FONT };

@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
   BOSS_AT, ENEMIES, EnemyDef, FONT, GEMS, IMAGES, MINIBOSS_AT, PLAYER, SKILLS, SKILL_BY_ID,
-  SkillDef, WAVES, XP_RATE, xpForLevel
+  RUN_LIMIT, SkillDef, WAVES, XP_RATE, xpForLevel
 } from './data';
 import { Hud } from './Hud';
 
@@ -60,7 +60,6 @@ interface Owned {
 export class GameScene extends Phaser.Scene {
   // world
   private player!: Phaser.GameObjects.Image;
-  private shadow!: Phaser.GameObjects.Ellipse;
   private sky!: Phaser.GameObjects.Image;
   private cloudsFar!: Phaser.GameObjects.TileSprite;
   private cloudsNear!: Phaser.GameObjects.TileSprite;
@@ -128,7 +127,6 @@ export class GameScene extends Phaser.Scene {
       .setTileScale(0.8)
       .setDepth(DEPTH.bg + 2);
 
-    this.shadow = this.add.ellipse(0, 0, 90, 26, 0x0a2233, 0.22).setDepth(DEPTH.player - 1);
     this.player = this.add.image(0, 0, 'player').setDepth(DEPTH.player).setScale(0.62);
 
     cam.startFollow(this.player, false, 0.12, 0.12);
@@ -266,7 +264,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update(dt);
 
     if (this.boss && this.boss.hp <= 0) this.finishRun(true);
-    if (this.elapsed > BOSS_AT + 75) this.finishRun(true);
+    if (this.elapsed > RUN_LIMIT) this.finishRun(true);
   }
 
   private drawBackground() {
@@ -290,12 +288,10 @@ export class GameScene extends Phaser.Scene {
 
     if (this.vel.lengthSq() > 400) {
       const a = Math.atan2(this.vel.y, this.vel.x);
-      const left = Math.abs(a) > Math.PI / 2;
-      this.player.setFlipY(left);
-      this.player.setRotation(left ? a + Math.PI : a);
+      this.player.setFlipY(Math.abs(a) > Math.PI / 2);
+      this.player.setRotation(a);
     }
     this.player.y += Math.sin(this.elapsed * 3) * 0.25;
-    this.shadow.setPosition(this.player.x + 8, this.player.y + 46);
 
     this.hurtCd = Math.max(0, this.hurtCd - dt);
     const regenLvl = this.lvlOf('health');
@@ -567,7 +563,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor((lvl - 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.3;
-          this.shoot('w_fish', a, 560 * sp, atk * (2.6 + lvl * 1.4), 1.6, 3 + lvl * 2, 1.9, 10);
+          this.shoot('w_fish', a, 560 * sp, atk * (2.6 + lvl * 1.4), 1.6, 3 + lvl * 2, 0.8, 10);
         }
         return 0.85 - lvl * 0.07;
       }
@@ -575,7 +571,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i / n) * Math.PI * 2;
-          const p = this.shoot('w_croissant', a, 430 * sp, atk * (2.2 + lvl * 1.1), 1.9, 999, 2.1, 9);
+          const p = this.shoot('w_croissant', a, 430 * sp, atk * (2.2 + lvl * 1.1), 1.9, 999, 0.8, 9);
           p.kind = 'boomerang';
           p.t = 0;
           p.hits = {};
@@ -586,7 +582,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2;
-          const p = this.shoot('w_yarnball', a, 360 * sp, atk * (2.4 + lvl * 1.2), 5, 999, 2.2, 6);
+          const p = this.shoot('w_yarnball', a, 360 * sp, atk * (2.4 + lvl * 1.2), 5, 999, 0.75, 6);
           p.kind = 'bounce';
           p.hits = {};
         }
@@ -678,7 +674,7 @@ export class GameScene extends Phaser.Scene {
       const spr = this.add
         .image(this.player.x, this.player.y, id === 'shield' ? 'w_shield' : 'w_propeller')
         .setDepth(DEPTH.proj - 1)
-        .setScale(id === 'shield' ? 0.55 + lvl * 0.12 : 1.5);
+        .setScale(id === 'shield' ? 0.8 + lvl * 0.14 : 0.7);
       if (id === 'shield') spr.setAlpha(0.85);
       this.projs.push({
         spr,

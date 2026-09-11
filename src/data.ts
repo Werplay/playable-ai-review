@@ -91,7 +91,7 @@ export const PLAYER = {
 
 /** The real game paces a run over 10-20 minutes; this ad has ~95 seconds,
  *  so gem XP is scaled to keep the level-up cadence around 8-10 seconds. */
-export const XP_RATE = 2;
+export const XP_RATE = 1.3;
 
 /** InGameXpHandler.UpdateXpRequiredThisLevel */
 export const xpForLevel = (level: number) => 40 * level * level + 80 * level - 20;
@@ -111,15 +111,15 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<string, EnemyDef> = {
-  furry:       { key: 'e_furry',       hp: 22,   speed: 62,  damage: 6,  scale: 0.62, radius: 32, gem: 0 },
-  speedbug:    { key: 'e_speedbug',    hp: 14,   speed: 104, damage: 5,  scale: 0.58, radius: 26, gem: 0 },
-  ladybug:     { key: 'e_ladybug',     hp: 30,   speed: 82,  damage: 7,  scale: 0.6,  radius: 28, gem: 1 },
-  feline:      { key: 'e_feline',      hp: 46,   speed: 70,  damage: 9,  scale: 0.66, radius: 34, gem: 1 },
-  helmetbee:   { key: 'e_helmetbee',   hp: 26,   speed: 96,  damage: 6,  scale: 0.55, radius: 26, gem: 0 },
-  bomberkitty: { key: 'e_bomberkitty', hp: 78,   speed: 58,  damage: 12, scale: 0.7,  radius: 38, gem: 2 },
-  razorclaw:   { key: 'e_razorclaw',   hp: 120,  speed: 66,  damage: 14, scale: 0.72, radius: 38, gem: 2 },
-  hammerhead:  { key: 'e_hammerhead',  hp: 420,  speed: 54,  damage: 18, scale: 1.05, radius: 56, gem: 3, boss: true },
-  boss:        { key: 'e_boss',        hp: 1500, speed: 48,  damage: 24, scale: 1.3,  radius: 80, gem: 3, boss: true }
+  furry:       { key: 'e_furry',       hp: 22,   speed: 140, damage: 6,  scale: 0.62, radius: 32, gem: 0 },
+  speedbug:    { key: 'e_speedbug',    hp: 14,   speed: 195, damage: 5,  scale: 0.58, radius: 26, gem: 0 },
+  ladybug:     { key: 'e_ladybug',     hp: 30,   speed: 165, damage: 7,  scale: 0.6,  radius: 28, gem: 1 },
+  feline:      { key: 'e_feline',      hp: 46,   speed: 150, damage: 9,  scale: 0.66, radius: 34, gem: 1 },
+  helmetbee:   { key: 'e_helmetbee',   hp: 26,   speed: 180, damage: 6,  scale: 0.55, radius: 26, gem: 0 },
+  bomberkitty: { key: 'e_bomberkitty', hp: 78,   speed: 132, damage: 12, scale: 0.7,  radius: 38, gem: 2 },
+  razorclaw:   { key: 'e_razorclaw',   hp: 120,  speed: 145, damage: 14, scale: 0.72, radius: 38, gem: 2 },
+  hammerhead:  { key: 'e_hammerhead',  hp: 420,  speed: 130, damage: 18, scale: 1.05, radius: 56, gem: 2, boss: true },
+  boss:        { key: 'e_boss',        hp: 1600, speed: 165, damage: 24, scale: 1.3,  radius: 80, gem: 3, boss: true }
 };
 
 // --- waves (EnemyWaveData-style: start/end time, pool, spawn interval) -----
@@ -135,8 +135,9 @@ export const WAVES: Wave[] = [
   { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'], interval: 0.42, burst: 3, cap: 33 }
 ];
 
-export const MINIBOSS_AT = 46;   // HammerHead joins mid-run
-export const BOSS_AT = 92;       // vaderboss closes the run
+export const MINIBOSS_AT = 44;   // HammerHead joins mid-run
+export const BOSS_AT = 78;       // vaderboss closes the run
+export const RUN_LIMIT = 110;    // hard stop so the ad always reaches its end card
 
 // --- skills ---------------------------------------------------------------
 export type SkillKind = 'weapon' | 'passive';

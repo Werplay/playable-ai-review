@@ -1,8 +1,8 @@
 import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
-  BOSS_AT, ENEMIES, EnemyDef, FONT, GEMS, IMAGES, MINIBOSS_AT, PLAYER, SKILLS, SKILL_BY_ID,
-  RUN_LIMIT, SkillDef, WAVES, XP_RATE, xpForLevel
+  BOSS_AT, ENEMIES, EnemyDef, GEMS, IMAGES, MINIBOSS_AT, PLAYER, RUN_LIMIT, SKILLS,
+  SKILL_BY_ID, SkillDef, WAVES, XP_RATE, xpForLevel
 } from './data';
 import { Hud } from './Hud';
 
@@ -34,8 +34,6 @@ interface Proj {
   orbitSpeed?: number;
   /** boomerang params */
   t?: number;
-  originX?: number;
-  originY?: number;
   /** per-enemy re-hit gate for multi-hit weapons */
   hits?: Record<number, number>;
 }
@@ -93,6 +91,7 @@ export class GameScene extends Phaser.Scene {
   private miniBossSpawned = false;
   private bossSpawned = false;
   private boss: Enemy | null = null;
+  private bossDefeated = false;
   private hurtCd = 0;
   private regen = 0;
 
@@ -219,7 +218,6 @@ export class GameScene extends Phaser.Scene {
     } else {
       const def = SKILL_BY_ID.get(id)!;
       this.owned.set(id, { def, level: 1, cd: 0 });
-      if (def.id === 'shield' || def.id === 'propeller') this.buildOrbit(def.id);
     }
     if (id === 'health') {
       const before = this.maxHp;
@@ -227,6 +225,11 @@ export class GameScene extends Phaser.Scene {
       this.hp += this.maxHp - before;
     }
     if (id === 'shield' || id === 'propeller') this.buildOrbit(id);
+  }
+
+  /** Boss bar feed for the HUD. */
+  public bossState() {
+    return this.boss ? { ratio: this.boss.hp / this.boss.maxHp } : null;
   }
 
   public ownedList() {
@@ -263,7 +266,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePickups(dt);
     this.hud.update(dt);
 
-    if (this.boss && this.boss.hp <= 0) this.finishRun(true);
+    if (this.bossDefeated) this.finishRun(true);
     if (this.elapsed > RUN_LIMIT) this.finishRun(true);
   }
 
@@ -312,7 +315,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.miniBossSpawned && this.elapsed >= MINIBOSS_AT) {
       this.miniBossSpawned = true;
       this.spawn('hammerhead');
-      this.hud.banner('LARGE GROUP INCOMING');
+      this.hud.banner('MINI BOSS INCOMING');
     }
     if (!this.bossSpawned && this.elapsed >= BOSS_AT) {
       this.bossSpawned = true;
@@ -330,7 +333,11 @@ export class GameScene extends Phaser.Scene {
     const def = ENEMIES[type];
     const cam = this.cameras.main;
     const dist = Math.hypot(cam.width, cam.height) / 2 + 90;
-    const a = Math.random() * Math.PI * 2;
+    const heading = this.vel.lengthSq() > 900 ? Math.atan2(this.vel.y, this.vel.x) : Math.random() * Math.PI * 2;
+    const a =
+      Math.random() < 0.65
+        ? heading + Phaser.Math.FloatBetween(-1.1, 1.1)
+        : Math.random() * Math.PI * 2;
     const spr = this.add
       .image(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
       .setDepth(DEPTH.enemy)
@@ -354,6 +361,7 @@ export class GameScene extends Phaser.Scene {
   private updateEnemies(dt: number) {
     const px = this.player.x;
     const py = this.player.y;
+    this.separate();
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       const dx = px - e.spr.x;
@@ -376,6 +384,33 @@ export class GameScene extends Phaser.Scene {
         this.damagePlayer(e.def.damage);
         e.knockX = (-dx / d) * 260;
         e.knockY = (-dy / d) * 260;
+      }
+    }
+  }
+
+  /** Nudge overlapping enemies apart so a wave reads as a swarm, not one sprite.
+   *  ponytail: O(n^2) over the live list; fine at the ~35 enemy cap, needs a grid above that. */
+  private separate() {
+    const list = this.enemies;
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        const dx = b.spr.x - a.spr.x;
+        const dy = b.spr.y - a.spr.y;
+        const min = (a.def.radius + b.def.radius) * 0.8;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > min * min || d2 < 0.01) continue;
+        const d = Math.sqrt(d2);
+        const push = ((min - d) / d) * 0.35;
+        if (!a.def.boss) {
+          a.spr.x -= dx * push;
+          a.spr.y -= dy * push;
+        }
+        if (!b.def.boss) {
+          b.spr.x += dx * push;
+          b.spr.y += dy * push;
+        }
       }
     }
   }
@@ -427,12 +462,15 @@ export class GameScene extends Phaser.Scene {
     spr.setTintFill(0xffffff);
     this.tweens.add({
       targets: spr,
-      scale: spr.scale * 1.5,
+      scale: spr.scale * 1.25,
       alpha: 0,
-      duration: 180,
+      duration: 150,
       onComplete: () => spr.destroy()
     });
-    if (e === this.boss) this.boss = { ...e, hp: 0 };
+    if (e === this.boss) {
+      this.bossDefeated = true;
+      this.boss = null;
+    }
   }
 
   private dropPickup(x: number, y: number, key: string, xp: number, heal: number, scale: number) {
@@ -440,7 +478,7 @@ export class GameScene extends Phaser.Scene {
     const spr = this.add
       .image(x, y, key)
       .setDepth(DEPTH.pickup)
-      .setScale(scale * 0.85);
+      .setScale(scale * 0.7);
     this.pickups.push({
       spr,
       xp,
@@ -546,14 +584,14 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor((lvl + 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.16;
-          this.shoot('bullet', a, 660 * sp, atk * (1.8 + lvl * 1.1), 1.2, 1, 1.0);
+          this.shoot('bullet', a, 660 * sp, atk * (1.8 + lvl * 1.1), 1.2, 1, 1.4);
         }
         return 0.34 - lvl * 0.02;
       }
       case 'warmachine': {
         for (const off of [-12, 12]) {
           const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
-          const p = this.shoot('bullet_long', a, 880 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 0.9);
+          const p = this.shoot('bullet_long', a, 880 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 1.2);
           p.spr.x += Math.cos(aim + Math.PI / 2) * off;
           p.spr.y += Math.sin(aim + Math.PI / 2) * off;
         }
@@ -632,9 +670,7 @@ export class GameScene extends Phaser.Scene {
       life,
       pierce,
       kind: 'straight',
-      spin,
-      originX: this.player.x,
-      originY: this.player.y
+      spin
     };
     this.projs.push(p);
     return p;
@@ -776,5 +812,3 @@ export class GameScene extends Phaser.Scene {
     this.hud?.resize(width, height);
   }
 }
-
-export { DEPTH, FONT };

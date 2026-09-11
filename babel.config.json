@@ -1,0 +1,14 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env",
+      {
+        "targets": { "ie": "11" },
+        "loose": true,
+        "bugfixes": true,
+        "useBuiltIns": false,
+        "exclude": ["transform-typeof-symbol", "transform-regenerator"]
+      }
+    ]
+  ]
+}

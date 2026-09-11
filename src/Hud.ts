@@ -32,7 +32,10 @@ export class Hud {
 
   private intro!: Phaser.GameObjects.Container;
   private overlay?: Phaser.GameObjects.Container;
+  private relayout?: () => void;
   private bannerText!: Phaser.GameObjects.Text;
+  private bossBar!: Phaser.GameObjects.Container;
+  private bossFill!: Phaser.GameObjects.Rectangle;
 
   constructor(scene: GameScene) {
     this.s = scene;
@@ -76,6 +79,13 @@ export class Hud {
     this.bannerText = s.add.text(0, 0, '', this.label(30, '#ff6b6b')).setOrigin(0.5).setAlpha(0);
     this.root.add(this.bannerText);
 
+    const bossBg = s.add.rectangle(0, 0, 260, 18, 0x0d2136, 0.8).setOrigin(0.5);
+    bossBg.setStrokeStyle(3, 0xff6b6b);
+    this.bossFill = s.add.rectangle(-128, 0, 256, 14, 0xff4438).setOrigin(0, 0.5);
+    const bossName = s.add.text(0, -22, 'BOSS', this.label(18, '#ff9a8f')).setOrigin(0.5);
+    this.bossBar = s.add.container(0, 0, [bossBg, this.bossFill, bossName]).setVisible(false);
+    this.root.add(this.bossBar);
+
     // intro
     const tap = s.add.text(0, 0, 'DRAG TO FLY', this.label(38, GOLD)).setOrigin(0.5);
     const sub = s.add.text(0, 44, 'Survive the swarm', this.label(20)).setOrigin(0.5);
@@ -117,6 +127,10 @@ export class Hud {
     this.stats[0].label.setText(`${Math.floor(t / 60)}:${`${t % 60}`.padStart(2, '0')}`);
     this.stats[1].label.setText(`${s.kills}`);
     this.stats[2].label.setText(`${s.wave}`);
+
+    const boss = s.bossState();
+    this.bossBar.setVisible(!!boss);
+    if (boss) this.bossFill.width = 256 * Phaser.Math.Clamp(boss.ratio, 0, 1);
 
     this.syncLoadout();
   }
@@ -170,7 +184,8 @@ export class Hud {
 
     this.overlay = c;
     pin(c);
-    this.layoutOverlay(cardW, cardH, narrow, title);
+    this.relayout = () => this.layoutOverlay(cardW, cardH, narrow, title);
+    this.relayout();
   }
 
   private makeCard(def: SkillDef, level: number, w: number, h: number, narrow: boolean) {
@@ -236,6 +251,7 @@ export class Hud {
   private closeLevelUp() {
     this.overlay?.destroy(true);
     this.overlay = undefined;
+    this.relayout = undefined;
   }
 
   // --------------------------------------------------------------- end card
@@ -302,15 +318,14 @@ export class Hud {
 
     this.loadout.setPosition(pad, height - 54);
     this.bannerText.setPosition(width / 2, height * 0.26);
+    this.bossBar.setPosition(width / 2, 132);
 
     this.intro.setPosition(width / 2, height * 0.62);
 
     if (this.overlay?.getData('end')) {
       this.layoutEnd();
     } else if (this.overlay) {
-      // rebuild the picker at the new size — simpler than re-flowing every child
-      const dim = this.overlay.getAt(0) as Phaser.GameObjects.Rectangle;
-      dim.setSize(width, height);
+      this.relayout?.();
     }
   }
 }

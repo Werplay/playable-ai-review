@@ -11,6 +11,9 @@ export class Game extends Phaser.Game {
       parent: document.body,
       powerPreference: 'high-performance',
       render: { antialias: true, roundPixels: false },
+      // Playables run in a cross-origin iframe where Phaser's window.top listeners
+      // throw; the canvas listeners are all this game needs.
+      input: { windowEvents: false },
       scale: { mode: Phaser.Scale.NONE, autoCenter: Phaser.Scale.CENTER_BOTH },
       scene: GameScene
     });

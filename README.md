@@ -1,55 +1,69 @@
-# Playable Template with Phaser
+# Explottens: Survival — Playable Ad
 
-A starter template for creating playable ads using Phaser with TypeScript support. This template combines:
+A playable ad that recreates the **Survival** mode of
+[`Explottens-FtP`](../Explottens-FtP) (the Unity project) in Phaser 3 + TypeScript,
+built on [`@smoud/playable-sdk`](https://github.com/smoudjs/playable-sdk) and
+[`@smoud/playable-scripts`](https://github.com/smoudjs/playable-scripts).
 
-- [Phaser](https://phaser.io/) - Fast, modern 2D game framework
-- [@smoud/playable-sdk](https://github.com/smoudjs/playable-sdk#readme) - SDK for creating playable ads with standardized events and methods
-- [@smoud/playable-scripts](https://github.com/smoudjs/playable-scripts#readme) - Build and development tools optimized for playable ads
+Everything ships as a single self-contained HTML file (~2 MB) with all art, the
+game's own font, and code inlined.
 
-## Demo
+## The loop
 
-Try out this template:
-- [View on CodePen](https://codepen.io/peter-hutsul/pen/jEOYKLJ)
+Drag anywhere to fly. The plane auto-fires at the nearest enemy. Cat planes and
+bug-bots close in from every side in timed waves; kills drop XP gems that magnet
+in, the XP bar fills, and each level-up pauses the run for a pick of three
+upgrades. A HammerHead mini-boss joins at 0:44 and the vaderboss closes the run
+at 1:18. Win or die, the end card offers the store link.
 
-## Features
+## What came from the Unity project
 
-- Phaser 3 integration for high-performance 2D game development
-- TypeScript support for better development experience
-- Hot module replacement during development
-- Game structure with Phaser and SDK integration
-- Event handling (resize, pause, resume, volume, etc.)
-- Installation button implementation
-- Interaction tracking
-- Responsive canvas scaling
+| Playable | Source in `Explottens-FtP` |
+|---|---|
+| XP curve `40L² + 80L − 20` | `Assets/Scripts/GameplayScripts/InGameXpHandler.cs` |
+| Gem values 10 / 40 / 100 / 2000 | `Assets/Prefabs/Collectibles/XpItem.prefab` |
+| Base ATK 10 / HP 100 | `Assets/Scripts/Player/PlayerStats.cs`, `Resources/CSV/SurvivorData/SurvivorLevelUpData.csv` |
+| Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
+| Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
+| Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, rendered to sprites |
+| Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
+| Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
+| HUD icons (time / kills / wave) | `Assets/Survival/*_Icon.png` |
+| Font (Luckiest Guy) | `Assets/GameFont/LuckiestGuy-Regular.ttf` |
+| Store package name | `Assets/google-services.json` |
 
-## Getting Started
+Sprites were composed from the Spine skeletons' setup pose (bone hierarchy,
+region + weighted-mesh attachments) rather than hand-cropped from the atlases, so
+the planes match the shipped art.
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start development server:
-   ```bash
-   npm run dev
-   ```
-4. Build for production:
-   ```bash
-   npm run build
-   ```
+## Tuning that is *not* from the game
 
-## Project Structure
+A real Survival run lasts 10–20 minutes; this ad has ~95 seconds. Three knobs are
+deliberately different and are marked as such in `src/data.ts`:
 
-- `src/index.ts` - Main entry point with SDK, Phaser and Game initialization
-- `src/Game.ts` - Game logic and Phaser scene setup
-- `src/index.css` - Styles for your playable
-- `src/index.html` - HTML template
-- `assets/` - Directory for your game assets (sprites, textures, etc.)
+- `XP_RATE` scales gem XP so level-ups land every ~8–10 s.
+- `PLAYER.health` is 140 rather than 100.
+- Enemy `speed` values are raised so the swarm can close on a 250 px/s plane in a
+  camera-sized arena.
 
-## Looking for More?
+## Layout
 
-Check out other available templates for different frameworks and use cases:
-- [playable-template-base](https://github.com/smoudjs/playable-template-base) - Template base version
-- [playable-template-base-js](https://github.com/smoudjs/playable-template-base-js) - Template base version (JavaScript)
-- [playable-template-pixi](https://github.com/smoudjs/playable-template-pixi) - Template with PixiJS
-- [playable-template-three](https://github.com/smoudjs/playable-template-three) - Template with Three.js
+- `src/index.ts` — SDK init, font registration, Phaser boot
+- `src/Game.ts` — `Phaser.Game` shell wired to the SDK lifecycle
+- `src/GameScene.ts` — arena, player, waves, weapons, pickups, level-ups
+- `src/Hud.ts` — run stats, boss bar, level-up picker, end card
+- `src/data.ts` — the tables above (assets, skills, enemies, waves)
+- `assets/` — extracted art + the game font
+
+## Build
+
+```bash
+npm install
+npm run dev                 # dev server with HMR
+npm run build               # dist/Explottens_Survival_v1_<date>_en_<network>.html
+./build-all.sh              # one file per ad network (needs build.js)
+```
+
+`build.json` carries the store links. The Google Play URL is the real package
+(`com.playdew.explottensurvivors`); **the iOS link is a placeholder** — the
+numeric App Store ID is not in the Unity repo, so swap it before shipping.

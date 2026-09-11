@@ -84,7 +84,7 @@ export const PLAYER = {
   attack: 10,        // PlayerStats.Default.Attack
   health: 140,       // SurvivorLevelUpData BaseHP 100, padded for a ~90s ad run
   speed: 250,        // px/s
-  pickupRadius: 170,
+  pickupRadius: 260,
   accel: 14,         // how fast velocity chases the joystick vector
   hurtCooldown: 0.7  // i-frames after a collision
 };
@@ -118,8 +118,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
   helmetbee:   { key: 'e_helmetbee',   hp: 26,   speed: 180, damage: 6,  scale: 0.55, radius: 26, gem: 0 },
   bomberkitty: { key: 'e_bomberkitty', hp: 78,   speed: 132, damage: 12, scale: 0.7,  radius: 38, gem: 2 },
   razorclaw:   { key: 'e_razorclaw',   hp: 120,  speed: 145, damage: 14, scale: 0.72, radius: 38, gem: 2 },
-  hammerhead:  { key: 'e_hammerhead',  hp: 420,  speed: 130, damage: 18, scale: 1.05, radius: 56, gem: 2, boss: true },
-  boss:        { key: 'e_boss',        hp: 1600, speed: 165, damage: 24, scale: 1.3,  radius: 80, gem: 3, boss: true }
+  hammerhead:  { key: 'e_hammerhead',  hp: 420,  speed: 130, damage: 18, scale: 0.85, radius: 50, gem: 2, boss: true },
+  boss:        { key: 'e_boss',        hp: 1600, speed: 165, damage: 24, scale: 0.85, radius: 62, gem: 3, boss: true }
 };
 
 // --- waves (EnemyWaveData-style: start/end time, pool, spawn interval) -----

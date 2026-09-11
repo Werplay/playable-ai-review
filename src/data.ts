@@ -3,7 +3,7 @@
 // XP curve + gem values: Assets/Scripts/GameplayScripts/InGameXpHandler.cs, Prefabs/Collectibles/XpItem.prefab
 // Base stats: Assets/Scripts/Player/PlayerStats.cs, Resources/CSV/SurvivorData/SurvivorLevelUpData.csv
 
-import fontUrl from 'assets/LuckiestGuy-Regular.ttf';
+import fontUrl from 'assets/LuckiestGuy-Regular.woff2';
 
 import player from 'assets/player.png';
 import eFurry from 'assets/e_furry.png';
@@ -69,16 +69,16 @@ export interface Sheet {
 }
 
 export const SHEETS: Record<string, Sheet> = {
-  player: { url: player, frameWidth: 90, frameHeight: 93, frames: 8, fps: 6 },
-  e_furry: { url: eFurry, frameWidth: 60, frameHeight: 68, frames: 5, fps: 3.8 },
-  e_feline: { url: eFeline, frameWidth: 65, frameHeight: 71, frames: 5, fps: 3.8 },
-  e_bomberkitty: { url: eBomberkitty, frameWidth: 70, frameHeight: 83, frames: 5, fps: 10 },
-  e_razorclaw: { url: eRazorclaw, frameWidth: 73, frameHeight: 78, frames: 5, fps: 3.8 },
-  e_hammerhead: { url: eHammerhead, frameWidth: 110, frameHeight: 104, frames: 5, fps: 3.8 },
-  e_speedbug: { url: eSpeedbug, frameWidth: 46, frameHeight: 32, frames: 5, fps: 15 },
-  e_helmetbee: { url: eHelmetbee, frameWidth: 46, frameHeight: 37, frames: 5, fps: 7.5 },
-  e_ladybug: { url: eLadybug, frameWidth: 49, frameHeight: 52, frames: 5, fps: 5 },
-  e_boss: { url: eBoss, frameWidth: 200, frameHeight: 226, frames: 4, fps: 4 }
+  player: { url: player, frameWidth: 67, frameHeight: 69, frames: 40, fps: 30.0 },
+  e_furry: { url: eFurry, frameWidth: 44, frameHeight: 50, frames: 40, fps: 30.0 },
+  e_feline: { url: eFeline, frameWidth: 48, frameHeight: 51, frames: 40, fps: 30.0 },
+  e_bomberkitty: { url: eBomberkitty, frameWidth: 52, frameHeight: 61, frames: 15, fps: 30.0 },
+  e_razorclaw: { url: eRazorclaw, frameWidth: 54, frameHeight: 56, frames: 40, fps: 30.0 },
+  e_hammerhead: { url: eHammerhead, frameWidth: 81, frameHeight: 77, frames: 40, fps: 30.0 },
+  e_speedbug: { url: eSpeedbug, frameWidth: 34, frameHeight: 24, frames: 10, fps: 30.0 },
+  e_helmetbee: { url: eHelmetbee, frameWidth: 34, frameHeight: 28, frames: 20, fps: 30.0 },
+  e_ladybug: { url: eLadybug, frameWidth: 36, frameHeight: 38, frames: 30, fps: 30.0 },
+  e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 }
 };
 
 export const IMAGES: Record<string, string> = {
@@ -119,8 +119,9 @@ export const IMAGES: Record<string, string> = {
 };
 
 // --- player ---------------------------------------------------------------
-/** Every character strip is baked at ~1.35x its on-screen size, so one scale fits all. */
-export const ART_SCALE = 0.74;
+/** Strips are baked at exactly their on-screen size — the canvas is CSS-pixel sized,
+ *  so anything larger is invisible — which makes one draw scale fit every character. */
+export const ART_SCALE = 1;
 
 export const PLAYER = {
   attack: 10, // PlayerStats.Default.Attack
@@ -168,7 +169,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
   bomberkitty: { key: 'e_bomberkitty', hp: 78, speed: 132, damage: 12, scale: ART_SCALE, radius: 21, gem: 2 },
   razorclaw: { key: 'e_razorclaw', hp: 120, speed: 142, damage: 14, scale: ART_SCALE, radius: 21, gem: 2 },
   hammerhead: { key: 'e_hammerhead', hp: 420, speed: 128, damage: 18, scale: ART_SCALE, radius: 30, gem: 2, boss: true },
-  boss: { key: 'e_boss', hp: 1600, speed: 152, damage: 24, scale: 0.75, radius: 40, gem: 3, boss: true }
+  boss: { key: 'e_boss', hp: 1600, speed: 152, damage: 24, scale: ART_SCALE, radius: 40, gem: 3, boss: true }
 };
 
 // --- waves (EnemyWaveData-style: start/end time, pool, spawn interval) -----

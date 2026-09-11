@@ -139,7 +139,7 @@ export class Hud {
     while (this.loadout.length < list.length * 3) {
       const i = this.loadout.length / 3;
       const bg = this.s.add.rectangle(i * 44, 0, 38, 38, 0x0d2136, 0.66).setOrigin(0, 0);
-      const icon = this.s.add.image(i * 44 + 19, 19, list[i].def.icon).setScale(0.34);
+      const icon = this.s.add.image(i * 44 + 19, 19, list[i].def.icon).setScale(0.41);
       const pip = this.s.add.text(i * 44 + 34, 26, '1', this.label(14, GOLD)).setOrigin(0.5);
       this.loadout.add([bg, icon, pip]);
       pin(bg);
@@ -196,7 +196,7 @@ export class Hud {
 
     const icon = s.add
       .image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + h * 0.28, def.icon)
-      .setScale(narrow ? 0.68 : 0.82);
+      .setScale(narrow ? 0.82 : 0.98);
 
     const textX = narrow ? -w / 2 + 112 : 0;
     const ox = narrow ? 0 : 0.5;

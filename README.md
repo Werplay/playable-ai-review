@@ -29,7 +29,7 @@ at 1:18. Win or die, the end card offers the store link.
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
 | Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
 | HUD icons (time / kills / wave) | `Assets/Survival/*_Icon.png` |
-| Font (Luckiest Guy) | `Assets/GameFont/LuckiestGuy-Regular.ttf` |
+| Font (Luckiest Guy) | `Assets/GameFont/LuckiestGuy-Regular.ttf`, subset to ASCII and re-encoded woff2 (58 KB → 11 KB) |
 | Store package name | `Assets/google-services.json` |
 
 ### How the characters were made
@@ -38,24 +38,36 @@ There is no Spine runtime in the bundle — `player.json` alone is 3.2 MB, which
 larger than the whole ad budget. Instead the skeletons are evaluated offline and
 baked to sprite strips:
 
-1. Sample the skeleton's own animation at N evenly-spaced times (the player plays
-   `flying1`, everyone else plays `idle`), interpolating bone rotate/translate/scale
-   through Spine's linear, stepped and cubic-bezier curves.
+1. Sample the skeleton's own animation at `duration x 30` evenly-spaced times (the
+   player plays `flying1`, everyone else an `idle`), interpolating bone
+   rotate/translate/scale through Spine's linear, stepped and cubic-bezier curves.
+   30 is the authoring rate: every keyframe in this project lands on a 1/30 s
+   boundary and every duration is an exact multiple of it, and Spine omits
+   `skeleton.fps` from the export when it equals its 30 default.
 2. Resolve each slot's attachment for that frame, then draw region attachments as
    affine quads and mesh attachments triangle-by-triangle through their UVs —
    including weighted meshes and per-frame deform offsets, which is what moves the
    pilot's scarf and the wings.
 3. Pack the frames into one horizontal strip on a shared bounding box so the sprite
-   never jitters between cells, then quantize to 64 colours.
+   never jitters between cells, then quantize to 48 colours.
 
-Phaser loads each strip with `load.spritesheet` and loops it at the skeleton's own
-frame rate (`SHEETS` in `src/data.ts`). Enemies start at a random point in the loop
-so a wave doesn't flap in lockstep.
+Phaser loads each strip with `load.spritesheet` and loops it over the animation's real
+duration, so every character plays back at the same 30 fps it does in Unity. Enemies
+start at a random point in the loop so a wave doesn't flap in lockstep.
 
-Cells are baked at ~1.35x their on-screen size and no larger. Oversampled art is
-paid for twice — once in PNG bytes, again in base64 inflation — so sizing the cells
-to the actual draw size made the whole animated cast *smaller* than the earlier
-single-frame stills (0.36 MB vs 0.64 MB).
+`tools/build_assets.py` writes the `SHEETS` table in `src/data.ts` itself — frame
+sizes and counts are derived from the PNGs it just produced rather than kept in sync
+by hand. `createAnims` also takes its frame count from the decoded texture, so a
+stale entry degrades the loop instead of throwing.
+
+Cells are baked 1:1 with their on-screen size. The game canvas is CSS-pixel sized
+rather than device-pixel sized, so oversampling buys no sharpness and is paid for
+twice — once in PNG bytes, again in base64 inflation. Dropping from 1.35x to 1:1 is
+what paid for the jump from 12-15 fps to the full 30.
+
+One deliberate substitution: vaderboss ships two idle loops and the strip uses the
+shorter `idle2` (0.53 s) rather than `idle` (1.0 s). Same 30 fps, half the frames —
+`idle` alone was 126 KB, which did not fit.
 
 ## Tuning that is *not* from the game
 
@@ -89,9 +101,10 @@ npm run build               # dist/Explottens_Survival_v1_<date>_en_<network>.ht
 (`com.playdew.explottensurvivors`); **the iOS link is a placeholder** — the
 numeric App Store ID is not in the Unity repo, so swap it before shipping.
 
-`build.js` wraps `playable-scripts` only to add `target: ['web','es5']`, and
-`babel.config.json` down-levels the rest (Phaser included) — Mintegral rejects
-bundles that are not ES5. Note `loose: true` must stay off in that preset: it makes
+`build.js` and `dev.js` wrap `playable-scripts` to add `target: ['web','es5']` plus
+`exportsPresence: 'error'` — webpack otherwise only *warns* when a named import does
+not exist and hands you `undefined` at runtime. `babel.config.json`
+down-levels the rest (Phaser included) — Mintegral rejects bundles that are not ES5. Note `loose: true` must stay off in that preset: it makes
 Babel assume every spread target is an array, which silently turns
 `[...map.values()]` into `[].concat(mapIterator)`.
 

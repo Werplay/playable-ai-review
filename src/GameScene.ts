@@ -128,14 +128,21 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** One looping animation per baked strip, played at the skeleton's own rate. */
+  /** One looping animation per baked strip, played at the skeleton's own rate.
+   *  Frame count comes from the decoded texture, not the table, so a stale entry
+   *  degrades the loop instead of throwing on a missing frame. */
   private createAnims() {
     for (const key in SHEETS) {
       const sheet = SHEETS[key];
       if (this.anims.exists(key)) continue;
+      // Phaser adds a __BASE frame to every texture alongside the real ones
+      const total = this.textures.get(key).frameTotal - 1;
+      if (total !== sheet.frames && __DEV__) {
+        console.warn(`${key}: sheet table says ${sheet.frames} frames, texture has ${total}`);
+      }
       this.anims.create({
         key,
-        frames: this.anims.generateFrameNumbers(key, { start: 0, end: sheet.frames - 1 }),
+        frames: this.anims.generateFrameNumbers(key, { start: 0, end: Math.max(0, total - 1) }),
         frameRate: sheet.fps,
         repeat: -1
       });
@@ -369,10 +376,12 @@ export class GameScene extends Phaser.Scene {
     if (this.spawnCd > 0 && !starved) return;
     this.spawnCd = wave.interval;
     const burst = starved ? wave.burst + 2 : wave.burst;
-    for (let i = 0; i < burst; i++) this.spawn(Phaser.Utils.Array.GetRandom(wave.pool));
+    for (let i = 0; i < burst; i++) {
+      this.spawn(Phaser.Utils.Array.GetRandom(wave.pool), (i / burst) * Math.PI * 2);
+    }
   }
 
-  private spawn(type: string): Enemy {
+  private spawn(type: string, spread = 0): Enemy {
     const def = ENEMIES[type];
     const cam = this.cameras.main;
     const dist = Math.hypot(cam.width, cam.height) / 2 + 30;
@@ -441,11 +450,11 @@ export class GameScene extends Phaser.Scene {
         const b = list[j];
         const dx = b.spr.x - a.spr.x;
         const dy = b.spr.y - a.spr.y;
-        const min = (a.def.radius + b.def.radius) * 0.8;
+        const min = (a.def.radius + b.def.radius) * 1.05;
         const d2 = dx * dx + dy * dy;
         if (d2 > min * min || d2 < 0.01) continue;
         const d = Math.sqrt(d2);
-        const push = ((min - d) / d) * 0.35;
+        const push = ((min - d) / d) * 0.6;
         if (!a.def.boss) {
           a.spr.x -= dx * push;
           a.spr.y -= dy * push;

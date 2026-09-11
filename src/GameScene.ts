@@ -1,8 +1,20 @@
 import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
-  BOSS_AT, ENEMIES, EnemyDef, GEMS, IMAGES, MINIBOSS_AT, PLAYER, RUN_LIMIT, SKILLS,
-  SKILL_BY_ID, SkillDef, WAVES, XP_RATE, xpForLevel
+  BOSS_AT,
+  ENEMIES,
+  EnemyDef,
+  GEMS,
+  IMAGES,
+  MINIBOSS_AT,
+  PLAYER,
+  RUN_LIMIT,
+  SKILLS,
+  SKILL_BY_ID,
+  SkillDef,
+  WAVES,
+  XP_RATE,
+  xpForLevel
 } from './data';
 import { Hud } from './Hud';
 
@@ -334,10 +346,7 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const dist = Math.hypot(cam.width, cam.height) / 2 + 90;
     const heading = this.vel.lengthSq() > 900 ? Math.atan2(this.vel.y, this.vel.x) : Math.random() * Math.PI * 2;
-    const a =
-      Math.random() < 0.65
-        ? heading + Phaser.Math.FloatBetween(-1.1, 1.1)
-        : Math.random() * Math.PI * 2;
+    const a = Math.random() < 0.65 ? heading + Phaser.Math.FloatBetween(-1.1, 1.1) : Math.random() * Math.PI * 2;
     const spr = this.add
       .image(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
       .setDepth(DEPTH.enemy)
@@ -633,9 +642,7 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(i * 110, () => {
             if (this.state === 'over') return;
             const pick = Phaser.Utils.Array.GetRandom(
-              this.enemies.filter(
-                (e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 520
-              )
+              this.enemies.filter((e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 520)
             ) as Enemy | undefined;
             if (!pick) return;
             this.strike(pick.spr.x, pick.spr.y, dmg, 70 + lvl * 8);
@@ -657,11 +664,7 @@ export class GameScene extends Phaser.Scene {
     scale: number,
     spin = 0
   ): Proj {
-    const spr = this.add
-      .image(this.player.x, this.player.y, key)
-      .setDepth(DEPTH.proj)
-      .setScale(scale)
-      .setRotation(angle);
+    const spr = this.add.image(this.player.x, this.player.y, key).setDepth(DEPTH.proj).setScale(scale).setRotation(angle);
     const p: Proj = {
       spr,
       vx: Math.cos(angle) * speed,

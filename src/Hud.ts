@@ -3,9 +3,8 @@ import { sdk } from '@smoud/playable-sdk';
 import { FONT, SkillDef } from './data';
 import type { GameScene } from './GameScene';
 
-const D = { hud: 100, overlay: 200, card: 210, text: 220 };
+const D = { hud: 100, overlay: 200 };
 const GOLD = '#ffd34d';
-
 
 /** A container's scrollFactor drives rendering but input hit-testing reads each
  *  child's own value — so pin the whole subtree or taps land camera-scroll away. */
@@ -143,7 +142,9 @@ export class Hud {
       const icon = this.s.add.image(i * 44 + 19, 19, list[i].def.icon).setScale(0.34);
       const pip = this.s.add.text(i * 44 + 34, 26, '1', this.label(14, GOLD)).setOrigin(0.5);
       this.loadout.add([bg, icon, pip]);
-      pin(this.loadout);
+      pin(bg);
+      pin(icon);
+      pin(pip);
     }
     for (let i = 0; i < list.length; i++) {
       const icon = this.loadout.getAt(i * 3 + 1) as Phaser.GameObjects.Image;
@@ -174,12 +175,10 @@ export class Hud {
       card.setAlpha(0);
       card.setData('slideFrom', 40);
       s.tweens.add({ targets: card, alpha: 1, duration: 200, delay: 60 * i });
-      (card.getAt(0) as Phaser.GameObjects.Rectangle)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => {
-          this.closeLevelUp();
-          s.closeLevelUp(choice.def.id);
-        });
+      (card.getAt(0) as Phaser.GameObjects.Rectangle).setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+        this.closeLevelUp();
+        s.closeLevelUp(choice.def.id);
+      });
     });
 
     this.overlay = c;
@@ -194,9 +193,7 @@ export class Hud {
     const bg = s.add.rectangle(0, 0, w, h, 0x11263d, 0.98).setOrigin(0.5);
     bg.setStrokeStyle(4, isWeapon ? 0xffb23d : 0x54c8ff);
 
-    const icon = s.add
-      .image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + 78, def.icon)
-      .setScale(narrow ? 0.68 : 0.82);
+    const icon = s.add.image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + 78, def.icon).setScale(narrow ? 0.68 : 0.82);
 
     const textX = narrow ? -w / 2 + 112 : 0;
     const ox = narrow ? 0 : 0.5;

@@ -25,16 +25,37 @@ at 1:18. Win or die, the end card offers the store link.
 | Base ATK 10 / HP 100 | `Assets/Scripts/Player/PlayerStats.cs`, `Resources/CSV/SurvivorData/SurvivorLevelUpData.csv` |
 | Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
 | Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
-| Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, rendered to sprites |
+| Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, baked to animated sprite strips |
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
 | Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
 | HUD icons (time / kills / wave) | `Assets/Survival/*_Icon.png` |
 | Font (Luckiest Guy) | `Assets/GameFont/LuckiestGuy-Regular.ttf` |
 | Store package name | `Assets/google-services.json` |
 
-Sprites were composed from the Spine skeletons' setup pose (bone hierarchy,
-region + weighted-mesh attachments) rather than hand-cropped from the atlases, so
-the planes match the shipped art.
+### How the characters were made
+
+There is no Spine runtime in the bundle — `player.json` alone is 3.2 MB, which is
+larger than the whole ad budget. Instead the skeletons are evaluated offline and
+baked to sprite strips:
+
+1. Sample the skeleton's own animation at N evenly-spaced times (the player plays
+   `flying1`, everyone else plays `idle`), interpolating bone rotate/translate/scale
+   through Spine's linear, stepped and cubic-bezier curves.
+2. Resolve each slot's attachment for that frame, then draw region attachments as
+   affine quads and mesh attachments triangle-by-triangle through their UVs —
+   including weighted meshes and per-frame deform offsets, which is what moves the
+   pilot's scarf and the wings.
+3. Pack the frames into one horizontal strip on a shared bounding box so the sprite
+   never jitters between cells, then quantize to 64 colours.
+
+Phaser loads each strip with `load.spritesheet` and loops it at the skeleton's own
+frame rate (`SHEETS` in `src/data.ts`). Enemies start at a random point in the loop
+so a wave doesn't flap in lockstep.
+
+Cells are baked at ~1.35x their on-screen size and no larger. Oversampled art is
+paid for twice — once in PNG bytes, again in base64 inflation — so sizing the cells
+to the actual draw size made the whole animated cast *smaller* than the earlier
+single-frame stills (0.36 MB vs 0.64 MB).
 
 ## Tuning that is *not* from the game
 
@@ -67,3 +88,17 @@ npm run build               # dist/Explottens_Survival_v1_<date>_en_<network>.ht
 `build.json` carries the store links. The Google Play URL is the real package
 (`com.playdew.explottensurvivors`); **the iOS link is a placeholder** — the
 numeric App Store ID is not in the Unity repo, so swap it before shipping.
+
+`build.js` wraps `playable-scripts` only to add `target: ['web','es5']`, and
+`babel.config.json` down-levels the rest (Phaser included) — Mintegral rejects
+bundles that are not ES5. Note `loose: true` must stay off in that preset: it makes
+Babel assume every spread target is an array, which silently turns
+`[...map.values()]` into `[].concat(mapIterator)`.
+
+## Verification
+
+`GameScene` exposes itself on `window.__scene` so a headless run can read live state
+(`state`, `elapsed`, `kills`, `level`, `hp`, `enemies`, `projs`). The build was checked
+that way at 400x720, 780x400, 768x1024, 1024x768 and 320x640 plus a mid-run rotation:
+60 fps throughout, no console or page errors, and no network request of any kind
+leaving the page.

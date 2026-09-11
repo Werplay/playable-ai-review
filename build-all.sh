@@ -7,7 +7,7 @@
 #   JOBS=4 ./build-all.sh          # cap to 4 parallel builds
 #   ./build-all.sh fb unity google # build only the given networks
 #
-# Output:  dist/Blizzard_..._<NETWORK>.{html,zip}
+# Output:  dist/Explottens_Survival_..._<NETWORK>.{html,zip}
 # Logs:    build-logs/<network>.log  (one per network)
 #
 set -uo pipefail

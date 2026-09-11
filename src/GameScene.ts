@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
+  ART_SCALE,
   BOSS_AT,
   ENEMIES,
   EnemyDef,
@@ -8,8 +9,10 @@ import {
   IMAGES,
   MINIBOSS_AT,
   PLAYER,
+  MIN_ON_SCREEN,
   RUN_LIMIT,
   SKILLS,
+  SHEETS,
   SKILL_BY_ID,
   SkillDef,
   WAVES,
@@ -22,7 +25,7 @@ const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
 
 interface Enemy {
   id: number;
-  spr: Phaser.GameObjects.Image;
+  spr: Phaser.GameObjects.Sprite;
   def: EnemyDef;
   hp: number;
   maxHp: number;
@@ -69,7 +72,7 @@ interface Owned {
 
 export class GameScene extends Phaser.Scene {
   // world
-  private player!: Phaser.GameObjects.Image;
+  private player!: Phaser.GameObjects.Sprite;
   private sky!: Phaser.GameObjects.Image;
   private cloudsFar!: Phaser.GameObjects.TileSprite;
   private cloudsNear!: Phaser.GameObjects.TileSprite;
@@ -116,6 +119,27 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- preload
   preload() {
     for (const key in IMAGES) this.load.image(key, IMAGES[key]);
+    for (const key in SHEETS) {
+      const sheet = SHEETS[key];
+      this.load.spritesheet(key, sheet.url, {
+        frameWidth: sheet.frameWidth,
+        frameHeight: sheet.frameHeight
+      });
+    }
+  }
+
+  /** One looping animation per baked strip, played at the skeleton's own rate. */
+  private createAnims() {
+    for (const key in SHEETS) {
+      const sheet = SHEETS[key];
+      if (this.anims.exists(key)) continue;
+      this.anims.create({
+        key,
+        frames: this.anims.generateFrameNumbers(key, { start: 0, end: sheet.frames - 1 }),
+        frameRate: sheet.fps,
+        repeat: -1
+      });
+    }
   }
 
   // ----------------------------------------------------------------- create
@@ -127,26 +151,28 @@ export class GameScene extends Phaser.Scene {
       .tileSprite(0, 0, 10, 10, 'clouds1')
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setAlpha(0.4)
-      .setTileScale(0.5)
+      .setAlpha(0.3)
+      .setTileScale(0.45)
       .setDepth(DEPTH.bg + 1);
     this.cloudsNear = this.add
       .tileSprite(0, 0, 10, 10, 'clouds2')
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setAlpha(0.75)
-      .setTileScale(0.8)
+      .setAlpha(0.5)
+      .setTileScale(0.7)
       .setDepth(DEPTH.bg + 2);
 
-    this.player = this.add.image(0, 0, 'player').setDepth(DEPTH.player).setScale(0.62);
+    this.createAnims();
+    this.player = this.add.sprite(0, 0, 'player').setDepth(DEPTH.player).setScale(ART_SCALE);
+    this.player.play('player');
 
     cam.startFollow(this.player, false, 0.12, 0.12);
     cam.setBackgroundColor('#57bdf9');
 
     // virtual joystick — appears wherever the finger lands
-    this.joyBase = this.add.circle(0, 0, 62, 0xffffff, 0.16).setScrollFactor(0).setDepth(90).setVisible(false);
+    this.joyBase = this.add.circle(0, 0, 50, 0xffffff, 0.16).setScrollFactor(0).setDepth(90).setVisible(false);
     this.joyBase.setStrokeStyle(4, 0xffffff, 0.5);
-    this.joyKnob = this.add.circle(0, 0, 28, 0xffffff, 0.55).setScrollFactor(0).setDepth(91).setVisible(false);
+    this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.55).setScrollFactor(0).setDepth(91).setVisible(false);
 
     this.input.addPointer(2);
     this.input.on('pointerdown', this.onDown, this);
@@ -158,7 +184,8 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this);
     this.hud.showIntro();
 
-    (window as any).__scene = this; // TEMP debug hook
+    // Handle used by the headless QA harness to read run state; harmless in production.
+    (window as any).__scene = this;
     this.resize(cam.width, cam.height);
     sdk.start();
   }
@@ -176,9 +203,9 @@ export class GameScene extends Phaser.Scene {
   private onMove(p: Phaser.Input.Pointer) {
     if (p.id !== this.joyPointer) return;
     const d = new Phaser.Math.Vector2(p.x - this.joyOrigin.x, p.y - this.joyOrigin.y);
-    const len = Math.min(d.length(), 62);
+    const len = Math.min(d.length(), 50);
     if (d.length() > 0) d.normalize();
-    this.move.copy(d).scale(Math.min(len / 46, 1));
+    this.move.copy(d).scale(Math.min(len / 38, 1));
     this.joyKnob.setPosition(this.joyOrigin.x + d.x * len, this.joyOrigin.y + d.y * len);
   }
 
@@ -336,21 +363,28 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.spawnCd -= dt;
-    if (this.spawnCd > 0 || this.enemies.length >= wave.cap) return;
+    if (this.enemies.length >= wave.cap) return;
+    // top the arena straight back up when the loadout has cleared it out
+    const starved = this.enemies.length < MIN_ON_SCREEN;
+    if (this.spawnCd > 0 && !starved) return;
     this.spawnCd = wave.interval;
-    for (let i = 0; i < wave.burst; i++) this.spawn(Phaser.Utils.Array.GetRandom(wave.pool));
+    const burst = starved ? wave.burst + 2 : wave.burst;
+    for (let i = 0; i < burst; i++) this.spawn(Phaser.Utils.Array.GetRandom(wave.pool));
   }
 
   private spawn(type: string): Enemy {
     const def = ENEMIES[type];
     const cam = this.cameras.main;
-    const dist = Math.hypot(cam.width, cam.height) / 2 + 90;
+    const dist = Math.hypot(cam.width, cam.height) / 2 + 30;
     const heading = this.vel.lengthSq() > 900 ? Math.atan2(this.vel.y, this.vel.x) : Math.random() * Math.PI * 2;
-    const a = Math.random() < 0.65 ? heading + Phaser.Math.FloatBetween(-1.1, 1.1) : Math.random() * Math.PI * 2;
+    const a = Math.random() < 0.8 ? heading + Phaser.Math.FloatBetween(-1.1, 1.1) : Math.random() * Math.PI * 2;
     const spr = this.add
-      .image(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
+      .sprite(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
       .setDepth(DEPTH.enemy)
       .setScale(def.scale);
+    // stagger the loop so a wave doesn't flap in lockstep
+    spr.play(def.key);
+    spr.anims.setProgress(Math.random());
     // difficulty ramps with elapsed time the way the stage timer does in-game
     const ramp = 1 + this.elapsed / 70;
     const e: Enemy = {
@@ -389,10 +423,10 @@ export class GameScene extends Phaser.Scene {
         if (e.flash <= 0) e.spr.clearTint();
       }
 
-      if (d < e.def.radius + 34 && this.hurtCd <= 0) {
+      if (d < e.def.radius + PLAYER.radius && this.hurtCd <= 0) {
         this.damagePlayer(e.def.damage);
-        e.knockX = (-dx / d) * 260;
-        e.knockY = (-dy / d) * 260;
+        e.knockX = (-dx / d) * 150;
+        e.knockY = (-dy / d) * 150;
       }
     }
   }
@@ -444,8 +478,8 @@ export class GameScene extends Phaser.Scene {
     const dy = e.spr.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
     if (!e.def.boss) {
-      e.knockX += (dx / d) * 120;
-      e.knockY += (dy / d) * 120;
+      e.knockX += (dx / d) * 70;
+      e.knockY += (dy / d) * 70;
     }
     if (e.hp <= 0) this.killEnemy(e);
   }
@@ -519,7 +553,7 @@ export class GameScene extends Phaser.Scene {
       p.spr.x += p.vx * dt;
       p.spr.y += p.vy * dt;
 
-      if (d < 30) {
+      if (d < 22) {
         if (p.xp) this.addXp(p.xp);
         if (p.heal) this.hp = Math.min(this.maxHp, this.hp + p.heal);
         p.spr.destroy();
@@ -583,7 +617,7 @@ export class GameScene extends Phaser.Scene {
     const lvl = o.level;
     const atk = PLAYER.attack * this.atkMul;
     const sp = this.projSpeedMul;
-    const target = this.nearestEnemy(900);
+    const target = this.nearestEnemy(700);
     const aim = target
       ? Math.atan2(target.spr.y - this.player.y, target.spr.x - this.player.x)
       : this.player.rotation * (this.player.flipY ? -1 : 1);
@@ -593,16 +627,16 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor((lvl + 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.16;
-          this.shoot('bullet', a, 660 * sp, atk * (1.8 + lvl * 1.1), 1.2, 1, 1.4);
+          this.shoot('bullet', a, 560 * sp, atk * (1.8 + lvl * 1.1), 1.2, 1, 0.85);
         }
         return 0.34 - lvl * 0.02;
       }
       case 'warmachine': {
         for (const off of [-12, 12]) {
           const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
-          const p = this.shoot('bullet_long', a, 880 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 1.2);
-          p.spr.x += Math.cos(aim + Math.PI / 2) * off;
-          p.spr.y += Math.sin(aim + Math.PI / 2) * off;
+          const p = this.shoot('bullet_long', a, 720 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 0.8);
+          p.spr.x += Math.cos(aim + Math.PI / 2) * off * 0.6;
+          p.spr.y += Math.sin(aim + Math.PI / 2) * off * 0.6;
         }
         return 0.14 - lvl * 0.012;
       }
@@ -610,7 +644,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor((lvl - 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.3;
-          this.shoot('w_fish', a, 560 * sp, atk * (2.6 + lvl * 1.4), 1.6, 3 + lvl * 2, 0.8, 10);
+          this.shoot('w_fish', a, 480 * sp, atk * (2.6 + lvl * 1.4), 1.6, 3 + lvl * 2, 0.8, 10);
         }
         return 0.85 - lvl * 0.07;
       }
@@ -618,7 +652,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i / n) * Math.PI * 2;
-          const p = this.shoot('w_croissant', a, 430 * sp, atk * (2.2 + lvl * 1.1), 1.9, 999, 0.8, 9);
+          const p = this.shoot('w_croissant', a, 360 * sp, atk * (2.2 + lvl * 1.1), 1.9, 999, 0.8, 9);
           p.kind = 'boomerang';
           p.t = 0;
           p.hits = {};
@@ -629,7 +663,7 @@ export class GameScene extends Phaser.Scene {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2;
-          const p = this.shoot('w_yarnball', a, 360 * sp, atk * (2.4 + lvl * 1.2), 5, 999, 0.75, 6);
+          const p = this.shoot('w_yarnball', a, 300 * sp, atk * (2.4 + lvl * 1.2), 5, 999, 0.75, 6);
           p.kind = 'bounce';
           p.hits = {};
         }
@@ -642,10 +676,10 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(i * 110, () => {
             if (this.state === 'over') return;
             const pick = Phaser.Utils.Array.GetRandom(
-              this.enemies.filter((e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 520)
+              this.enemies.filter((e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 420)
             ) as Enemy | undefined;
             if (!pick) return;
-            this.strike(pick.spr.x, pick.spr.y, dmg, 70 + lvl * 8);
+            this.strike(pick.spr.x, pick.spr.y, dmg, 46 + lvl * 6);
           });
         }
         return 2.4 - lvl * 0.18;
@@ -713,7 +747,7 @@ export class GameScene extends Phaser.Scene {
       const spr = this.add
         .image(this.player.x, this.player.y, id === 'shield' ? 'w_shield' : 'w_propeller')
         .setDepth(DEPTH.proj - 1)
-        .setScale(id === 'shield' ? 0.8 + lvl * 0.14 : 0.7);
+        .setScale(id === 'shield' ? 0.55 + lvl * 0.1 : 0.75);
       if (id === 'shield') spr.setAlpha(0.85);
       this.projs.push({
         spr,
@@ -725,7 +759,7 @@ export class GameScene extends Phaser.Scene {
         kind: 'orbit',
         spin: id === 'shield' ? 1.4 : 14,
         orbitAngle: (i / count) * Math.PI * 2,
-        orbitRadius: id === 'shield' ? 0 : 92 + lvl * 6,
+        orbitRadius: id === 'shield' ? 0 : 58 + lvl * 4,
         orbitSpeed: id === 'shield' ? 0 : 3.1,
         hits: {}
       });
@@ -772,7 +806,7 @@ export class GameScene extends Phaser.Scene {
 
       // hit test
       for (const e of [...this.enemies]) {
-        const hitR = e.def.radius + 14;
+        const hitR = e.def.radius + 10;
         if (Phaser.Math.Distance.Squared(e.spr.x, e.spr.y, p.spr.x, p.spr.y) > hitR * hitR) continue;
         if (p.hits) {
           if ((p.hits[e.id] ?? 0) > now) continue;

@@ -164,9 +164,10 @@ export class Hud {
     const title = s.add.text(0, 0, 'LEVEL UP!', this.label(40, GOLD)).setOrigin(0.5);
     c.add([dim, title]);
 
-    const narrow = this.w < 560;
-    const cardW = narrow ? Math.min(this.w - 40, 400) : 260;
-    const cardH = narrow ? 116 : 300;
+    // three across only when three actually fit; otherwise stack wide rows
+    const narrow = this.w < 620;
+    const cardW = narrow ? Math.min(this.w - 40, 400) : Math.min(260, (this.w - 88) / 3);
+    const cardH = narrow ? Math.min(116, (this.h - 170) / 3) : Math.min(300, this.h - 170);
 
     choices.forEach((choice, i) => {
       const card = this.makeCard(choice.def, choice.level, cardW, cardH, narrow);
@@ -193,7 +194,9 @@ export class Hud {
     const bg = s.add.rectangle(0, 0, w, h, 0x11263d, 0.98).setOrigin(0.5);
     bg.setStrokeStyle(4, isWeapon ? 0xffb23d : 0x54c8ff);
 
-    const icon = s.add.image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + 78, def.icon).setScale(narrow ? 0.68 : 0.82);
+    const icon = s.add
+      .image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + h * 0.28, def.icon)
+      .setScale(narrow ? 0.68 : 0.82);
 
     const textX = narrow ? -w / 2 + 112 : 0;
     const ox = narrow ? 0 : 0.5;
@@ -213,15 +216,15 @@ export class Hud {
       .text(textX, 0, level === 1 ? 'NEW!' : `Lv ${level}`, this.label(narrow ? 16 : 19, GOLD))
       .setOrigin(ox, 0);
 
-    // stack the three text rows and centre the stack vertically in the card
-    const gap = 4;
-    const stack = name.height + gap + desc.height + gap + lv.height;
-    let y = narrow ? -stack / 2 : 20;
-    name.y = y;
-    y += name.height + gap;
-    desc.y = y;
-    y += desc.height + gap;
-    lv.y = narrow ? y : h / 2 - 34;
+    // One stacked text column in both layouts — pinning the level line to the card
+    // bottom lets a three-line description run straight through it.
+    const gap = narrow ? 4 : 8;
+    const stack = name.height + desc.height + lv.height + gap * 2;
+    let y = narrow ? -stack / 2 : Math.min(h * 0.06, h / 2 - stack - 12);
+    for (const t of [name, desc, lv]) {
+      t.y = y;
+      y += t.height + gap;
+    }
 
     return s.add.container(0, 0, [bg, icon, name, desc, lv]);
   }
@@ -230,17 +233,24 @@ export class Hud {
     if (!this.overlay) return;
     const c = this.overlay;
     (c.getAt(0) as Phaser.GameObjects.Rectangle).setSize(this.w, this.h);
+
     const gap = narrow ? 14 : 22;
-    const total = narrow ? 3 * cardH + 2 * gap : 3 * cardW + 2 * gap;
-    title.setPosition(this.w / 2, this.h / 2 - total / 2 - (narrow ? 56 : 52));
+    const span = narrow ? 3 * cardH + 2 * gap : cardH;
+    const titleY = Math.max(this.h * 0.12, 74);
+    const top = titleY + title.height / 2 + (narrow ? 26 : 20);
+    // centre the stack when there is room, but never let it ride up under the title
+    const centre = Phaser.Math.Clamp(this.h / 2, top + span / 2, Math.max(top + span / 2, this.h - span / 2 - 12));
+
+    title.setPosition(this.w / 2, titleY);
 
     for (let i = 2; i < c.length; i++) {
       const card = c.getAt(i) as Phaser.GameObjects.Container;
       const k = card.getData('index') as number;
       if (narrow) {
-        card.setPosition(this.w / 2, this.h / 2 - total / 2 + cardH / 2 + k * (cardH + gap));
+        card.setPosition(this.w / 2, centre - span / 2 + cardH / 2 + k * (cardH + gap));
       } else {
-        card.setPosition(this.w / 2 - total / 2 + cardW / 2 + k * (cardW + gap), this.h / 2);
+        const row = 3 * cardW + 2 * gap;
+        card.setPosition(this.w / 2 - row / 2 + cardW / 2 + k * (cardW + gap), centre);
       }
     }
   }

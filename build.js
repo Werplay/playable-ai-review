@@ -4,9 +4,12 @@
  *
  *   node build.js [--network <name>]
  *
- * Adds `target: ['web','es5']` on top of playable-scripts' own config: the default
- * build emits an arrow-function webpack runtime, and Mintegral rejects bundles that
- * are not ES5. Everything else comes from playable-scripts as-is.
+ * Adds two things on top of playable-scripts' own config:
+ *  - `target: ['web','es5']`, because the default build emits an arrow-function
+ *    webpack runtime and Mintegral rejects bundles that are not ES5;
+ *  - `exportsPresence: 'error'`, because webpack only *warns* when a named import
+ *    does not exist and hands you `undefined` at runtime instead of failing.
+ * Everything else comes from playable-scripts as-is.
  */
 process.env.BABEL_ENV = 'production';
 process.env.NODE_ENV = 'production';
@@ -17,5 +20,6 @@ const i = process.argv.indexOf('--network');
 const network = i > -1 ? process.argv[i + 1] : undefined;
 
 runBuild(undefined, network ? { network } : undefined, undefined, {
-  target: ['web', 'es5']
+  target: ['web', 'es5'],
+  module: { parser: { javascript: { exportsPresence: 'error' } } }
 }).catch(() => process.exit(1));

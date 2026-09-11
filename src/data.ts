@@ -24,10 +24,7 @@ import appicon from 'assets/appicon.png';
 import gemGreen from 'assets/gem_green.png';
 import gemBlue from 'assets/gem_blue.png';
 import gemGold from 'assets/gem_gold.png';
-import coin from 'assets/coin.png';
 import meat from 'assets/meat.png';
-import magnet from 'assets/magnet.png';
-import chest from 'assets/chest.png';
 
 import bullet from 'assets/bullet.png';
 import bulletLong from 'assets/bullet_long.png';
@@ -61,17 +58,30 @@ import hudWave from 'assets/hud_wave.png';
 export const FONT = 'LuckiestGuy';
 export const FONT_URL = fontUrl;
 
+/** Character art is baked out of the Spine skeletons as horizontal strips: the player
+ *  plays `flying1`, everyone else plays `idle`, each at its own skeleton's rate. */
+export interface Sheet {
+  url: string;
+  frameWidth: number;
+  frameHeight: number;
+  frames: number;
+  fps: number;
+}
+
+export const SHEETS: Record<string, Sheet> = {
+  player: { url: player, frameWidth: 90, frameHeight: 93, frames: 8, fps: 6 },
+  e_furry: { url: eFurry, frameWidth: 60, frameHeight: 68, frames: 5, fps: 3.8 },
+  e_feline: { url: eFeline, frameWidth: 65, frameHeight: 71, frames: 5, fps: 3.8 },
+  e_bomberkitty: { url: eBomberkitty, frameWidth: 70, frameHeight: 83, frames: 5, fps: 10 },
+  e_razorclaw: { url: eRazorclaw, frameWidth: 73, frameHeight: 78, frames: 5, fps: 3.8 },
+  e_hammerhead: { url: eHammerhead, frameWidth: 110, frameHeight: 104, frames: 5, fps: 3.8 },
+  e_speedbug: { url: eSpeedbug, frameWidth: 46, frameHeight: 32, frames: 5, fps: 15 },
+  e_helmetbee: { url: eHelmetbee, frameWidth: 46, frameHeight: 37, frames: 5, fps: 7.5 },
+  e_ladybug: { url: eLadybug, frameWidth: 49, frameHeight: 52, frames: 5, fps: 5 },
+  e_boss: { url: eBoss, frameWidth: 200, frameHeight: 226, frames: 4, fps: 4 }
+};
+
 export const IMAGES: Record<string, string> = {
-  player,
-  e_furry: eFurry,
-  e_feline: eFeline,
-  e_speedbug: eSpeedbug,
-  e_ladybug: eLadybug,
-  e_helmetbee: eHelmetbee,
-  e_bomberkitty: eBomberkitty,
-  e_razorclaw: eRazorclaw,
-  e_hammerhead: eHammerhead,
-  e_boss: eBoss,
   sky,
   clouds1,
   clouds2,
@@ -79,10 +89,7 @@ export const IMAGES: Record<string, string> = {
   gem_green: gemGreen,
   gem_blue: gemBlue,
   gem_gold: gemGold,
-  coin,
   meat,
-  magnet,
-  chest,
   bullet,
   bullet_long: bulletLong,
   w_croissant: wCroissant,
@@ -112,11 +119,15 @@ export const IMAGES: Record<string, string> = {
 };
 
 // --- player ---------------------------------------------------------------
+/** Every character strip is baked at ~1.35x its on-screen size, so one scale fits all. */
+export const ART_SCALE = 0.74;
+
 export const PLAYER = {
   attack: 10, // PlayerStats.Default.Attack
   health: 140, // SurvivorLevelUpData BaseHP 100, padded for a ~90s ad run
-  speed: 250, // px/s
-  pickupRadius: 260,
+  speed: 190, // px/s
+  radius: 22,
+  pickupRadius: 240,
   accel: 14, // how fast velocity chases the joystick vector
   hurtCooldown: 0.7 // i-frames after a collision
 };
@@ -131,9 +142,9 @@ export const xpForLevel = (level: number) => 40 * level * level + 80 * level - 2
 /** XpItem.prefab values: SmallGreen / BigGreen / Blue / Gold */
 export const GEMS = [
   { key: 'gem_green', xp: 10, scale: 0.7 },
-  { key: 'gem_green', xp: 40, scale: 1 },
-  { key: 'gem_blue', xp: 100, scale: 1 },
-  { key: 'gem_gold', xp: 2000, scale: 1.1 }
+  { key: 'gem_green', xp: 40, scale: 0.95 },
+  { key: 'gem_blue', xp: 100, scale: 0.95 },
+  { key: 'gem_gold', xp: 2000, scale: 1.05 }
 ] as const;
 
 // --- enemies --------------------------------------------------------------
@@ -149,15 +160,15 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<string, EnemyDef> = {
-  furry: { key: 'e_furry', hp: 22, speed: 140, damage: 6, scale: 0.62, radius: 32, gem: 0 },
-  speedbug: { key: 'e_speedbug', hp: 14, speed: 195, damage: 5, scale: 0.58, radius: 26, gem: 0 },
-  ladybug: { key: 'e_ladybug', hp: 30, speed: 165, damage: 7, scale: 0.6, radius: 28, gem: 1 },
-  feline: { key: 'e_feline', hp: 46, speed: 150, damage: 9, scale: 0.66, radius: 34, gem: 1 },
-  helmetbee: { key: 'e_helmetbee', hp: 26, speed: 180, damage: 6, scale: 0.55, radius: 26, gem: 0 },
-  bomberkitty: { key: 'e_bomberkitty', hp: 78, speed: 132, damage: 12, scale: 0.7, radius: 38, gem: 2 },
-  razorclaw: { key: 'e_razorclaw', hp: 120, speed: 145, damage: 14, scale: 0.72, radius: 38, gem: 2 },
-  hammerhead: { key: 'e_hammerhead', hp: 420, speed: 130, damage: 18, scale: 0.85, radius: 50, gem: 2, boss: true },
-  boss: { key: 'e_boss', hp: 1600, speed: 165, damage: 24, scale: 0.85, radius: 62, gem: 3, boss: true }
+  furry: { key: 'e_furry', hp: 22, speed: 142, damage: 6, scale: ART_SCALE, radius: 18, gem: 0 },
+  speedbug: { key: 'e_speedbug', hp: 14, speed: 178, damage: 5, scale: ART_SCALE, radius: 15, gem: 0 },
+  ladybug: { key: 'e_ladybug', hp: 30, speed: 158, damage: 7, scale: ART_SCALE, radius: 16, gem: 1 },
+  feline: { key: 'e_feline', hp: 46, speed: 148, damage: 9, scale: ART_SCALE, radius: 19, gem: 1 },
+  helmetbee: { key: 'e_helmetbee', hp: 26, speed: 168, damage: 6, scale: ART_SCALE, radius: 15, gem: 0 },
+  bomberkitty: { key: 'e_bomberkitty', hp: 78, speed: 132, damage: 12, scale: ART_SCALE, radius: 21, gem: 2 },
+  razorclaw: { key: 'e_razorclaw', hp: 120, speed: 142, damage: 14, scale: ART_SCALE, radius: 21, gem: 2 },
+  hammerhead: { key: 'e_hammerhead', hp: 420, speed: 128, damage: 18, scale: ART_SCALE, radius: 30, gem: 2, boss: true },
+  boss: { key: 'e_boss', hp: 1600, speed: 152, damage: 24, scale: 0.75, radius: 40, gem: 3, boss: true }
 };
 
 // --- waves (EnemyWaveData-style: start/end time, pool, spawn interval) -----
@@ -171,16 +182,19 @@ export interface Wave {
 }
 
 export const WAVES: Wave[] = [
-  { start: 0, end: 16, pool: ['furry', 'speedbug'], interval: 0.9, burst: 1, cap: 10 },
-  { start: 16, end: 34, pool: ['furry', 'speedbug', 'ladybug'], interval: 0.8, burst: 1, cap: 15 },
-  { start: 34, end: 52, pool: ['feline', 'helmetbee', 'ladybug'], interval: 0.62, burst: 2, cap: 21 },
-  { start: 52, end: 72, pool: ['feline', 'bomberkitty', 'helmetbee'], interval: 0.52, burst: 2, cap: 27 },
-  { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'], interval: 0.42, burst: 3, cap: 33 }
+  { start: 0, end: 16, pool: ['furry', 'speedbug'], interval: 0.5, burst: 2, cap: 20 },
+  { start: 16, end: 34, pool: ['furry', 'speedbug', 'ladybug'], interval: 0.42, burst: 2, cap: 30 },
+  { start: 34, end: 52, pool: ['feline', 'helmetbee', 'ladybug'], interval: 0.36, burst: 3, cap: 40 },
+  { start: 52, end: 72, pool: ['feline', 'bomberkitty', 'helmetbee'], interval: 0.3, burst: 3, cap: 50 },
+  { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'], interval: 0.26, burst: 4, cap: 60 }
 ];
 
 export const MINIBOSS_AT = 44; // HammerHead joins mid-run
 export const BOSS_AT = 78; // vaderboss closes the run
 export const RUN_LIMIT = 110; // hard stop so the ad always reaches its end card
+
+/** Keep at least this many in play; a strong loadout otherwise empties the sky. */
+export const MIN_ON_SCREEN = 10;
 
 // --- skills ---------------------------------------------------------------
 export type SkillKind = 'weapon' | 'passive';

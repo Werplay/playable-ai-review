@@ -1,9 +1,0 @@
-@smoud/playable-scripts v1.1.4
-  [32mmode: [39m    production
-  [32moutDir: [39m  dist
-  [32mprotocol: [39mmraid
-  [32mnetwork: [39m applovin
-  [32mversion: [39m v1
-  [32mbuild: [39m
-[BABEL] Note: The code generator has deoptimised the styling of /Users/zeeshan/Desktop/work/playable-explottens-survivor/node_modules/phaser/dist/phaser.js as it exceeds the max of 500KB.
-Build successful!

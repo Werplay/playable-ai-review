@@ -82,11 +82,16 @@ export const IMAGES: Record<string, string> = {
 // --- player ---------------------------------------------------------------
 export const PLAYER = {
   attack: 10,        // PlayerStats.Default.Attack
-  health: 100,       // SurvivorLevelUpData level 1 BaseHP
+  health: 140,       // SurvivorLevelUpData BaseHP 100, padded for a ~90s ad run
   speed: 250,        // px/s
   pickupRadius: 170,
-  accel: 14          // how fast velocity chases the joystick vector
+  accel: 14,         // how fast velocity chases the joystick vector
+  hurtCooldown: 0.7  // i-frames after a collision
 };
+
+/** The real game paces a run over 10-20 minutes; this ad has ~95 seconds,
+ *  so gem XP is scaled to keep the level-up cadence around 8-10 seconds. */
+export const XP_RATE = 2;
 
 /** InGameXpHandler.UpdateXpRequiredThisLevel */
 export const xpForLevel = (level: number) => 40 * level * level + 80 * level - 20;
@@ -123,11 +128,11 @@ export interface Wave {
 }
 
 export const WAVES: Wave[] = [
-  { start: 0,  end: 16, pool: ['furry', 'speedbug'],                        interval: 0.75, burst: 1, cap: 16 },
-  { start: 16, end: 34, pool: ['furry', 'speedbug', 'ladybug'],             interval: 0.6,  burst: 2, cap: 24 },
-  { start: 34, end: 52, pool: ['feline', 'helmetbee', 'ladybug'],           interval: 0.5,  burst: 2, cap: 30 },
-  { start: 52, end: 72, pool: ['feline', 'bomberkitty', 'helmetbee'],       interval: 0.45, burst: 3, cap: 34 },
-  { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'],     interval: 0.4,  burst: 3, cap: 38 }
+  { start: 0,  end: 16, pool: ['furry', 'speedbug'],                    interval: 0.9,  burst: 1, cap: 10 },
+  { start: 16, end: 34, pool: ['furry', 'speedbug', 'ladybug'],         interval: 0.8,  burst: 1, cap: 15 },
+  { start: 34, end: 52, pool: ['feline', 'helmetbee', 'ladybug'],       interval: 0.62, burst: 2, cap: 21 },
+  { start: 52, end: 72, pool: ['feline', 'bomberkitty', 'helmetbee'],   interval: 0.52, burst: 2, cap: 27 },
+  { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'], interval: 0.42, burst: 3, cap: 33 }
 ];
 
 export const MINIBOSS_AT = 46;   // HammerHead joins mid-run

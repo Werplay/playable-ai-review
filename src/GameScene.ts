@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
   BOSS_AT, ENEMIES, EnemyDef, FONT, GEMS, IMAGES, MINIBOSS_AT, PLAYER, SKILLS, SKILL_BY_ID,
-  SkillDef, WAVES, xpForLevel
+  SkillDef, WAVES, XP_RATE, xpForLevel
 } from './data';
 import { Hud } from './Hud';
 
@@ -385,7 +385,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damagePlayer(amount: number) {
-    this.hurtCd = 0.55;
+    this.hurtCd = PLAYER.hurtCooldown;
     this.hp -= amount * this.armorMul;
     this.cameras.main.shake(120, 0.006);
     this.player.setTintFill(0xff4444);
@@ -486,7 +486,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addXp(amount: number) {
-    this.xp += amount * this.xpMul;
+    this.xp += amount * this.xpMul * XP_RATE;
     while (this.xp >= this.xpNeed) {
       this.xp -= this.xpNeed;
       this.level++;
@@ -547,54 +547,54 @@ export class GameScene extends Phaser.Scene {
 
     switch (o.def.id) {
       case 'multicanon': {
-        const n = 1 + Math.floor(lvl / 2);
+        const n = 1 + Math.floor((lvl + 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.16;
-          this.shoot('bullet', a, 660 * sp, atk * (1.2 + lvl * 0.35), 1.2, 1, 1.0);
+          this.shoot('bullet', a, 660 * sp, atk * (1.8 + lvl * 1.1), 1.2, 1, 1.0);
         }
-        return 0.55 - lvl * 0.03;
+        return 0.34 - lvl * 0.02;
       }
       case 'warmachine': {
         for (const off of [-12, 12]) {
           const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
-          const p = this.shoot('bullet_long', a, 880 * sp, atk * (0.7 + lvl * 0.2), 1.1, 1, 0.9);
+          const p = this.shoot('bullet_long', a, 880 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 0.9);
           p.spr.x += Math.cos(aim + Math.PI / 2) * off;
           p.spr.y += Math.sin(aim + Math.PI / 2) * off;
         }
-        return 0.16 - lvl * 0.012;
+        return 0.14 - lvl * 0.012;
       }
       case 'razorfin': {
         const n = 1 + Math.floor((lvl - 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.3;
-          this.shoot('w_fish', a, 540 * sp, atk * (1.6 + lvl * 0.5), 1.6, 2 + lvl, 1.9, 10);
+          this.shoot('w_fish', a, 560 * sp, atk * (2.6 + lvl * 1.4), 1.6, 3 + lvl * 2, 1.9, 10);
         }
-        return 1.1 - lvl * 0.07;
+        return 0.85 - lvl * 0.07;
       }
       case 'croissant': {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i / n) * Math.PI * 2;
-          const p = this.shoot('w_croissant', a, 420 * sp, atk * (1.4 + lvl * 0.45), 1.9, 999, 2.1, 9);
+          const p = this.shoot('w_croissant', a, 430 * sp, atk * (2.2 + lvl * 1.1), 1.9, 999, 2.1, 9);
           p.kind = 'boomerang';
           p.t = 0;
           p.hits = {};
         }
-        return 1.6 - lvl * 0.1;
+        return 1.25 - lvl * 0.1;
       }
       case 'yarnball': {
         const n = 1 + Math.floor(lvl / 2);
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2;
-          const p = this.shoot('w_yarnball', a, 340 * sp, atk * (1.5 + lvl * 0.5), 5, 999, 2.2, 6);
+          const p = this.shoot('w_yarnball', a, 360 * sp, atk * (2.4 + lvl * 1.2), 5, 999, 2.2, 6);
           p.kind = 'bounce';
           p.hits = {};
         }
-        return 2.4 - lvl * 0.15;
+        return 1.9 - lvl * 0.15;
       }
       case 'lightning': {
         const strikes = 1 + lvl;
-        const dmg = atk * (2.4 + lvl * 0.8);
+        const dmg = atk * (4 + lvl * 2.2);
         for (let i = 0; i < strikes; i++) {
           this.time.delayedCall(i * 110, () => {
             if (this.state === 'over') return;
@@ -607,7 +607,7 @@ export class GameScene extends Phaser.Scene {
             this.strike(pick.spr.x, pick.spr.y, dmg, 70 + lvl * 8);
           });
         }
-        return 3.2 - lvl * 0.2;
+        return 2.4 - lvl * 0.18;
       }
     }
     return 1;
@@ -711,7 +711,7 @@ export class GameScene extends Phaser.Scene {
         p.spr.x = this.player.x + Math.cos(p.orbitAngle!) * p.orbitRadius!;
         p.spr.y = this.player.y + Math.sin(p.orbitAngle!) * p.orbitRadius!;
         p.spr.rotation += p.spin * dt;
-        p.dmg = atk * (isShield ? 0.55 + lvl * 0.2 : 1.1 + lvl * 0.35);
+        p.dmg = atk * (isShield ? 1.2 + lvl * 0.8 : 2 + lvl * 1.2);
       } else {
         if (p.kind === 'boomerang') {
           // out-and-back arc, then it returns to the plane and expires

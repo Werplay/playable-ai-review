@@ -145,6 +145,12 @@ SFX = [
     ('sfx_levelup', 'levelUp.mp3'),              # InGameXpHandler
     ('sfx_tap',     'test/popUp.mp3'),
 ]
+# The gameplay loop GameManager.cs starts for this mode, cut to one 8-bar phrase:
+# 139.6 BPM measured off the onset envelope -> 1.72s bars, and the phrase at 27.52s
+# wraps with the least discontinuity of any bar-aligned window in the track. The full
+# 85s track is 1.4MB of source, which an ad cannot spend.
+BGM = ('bgm', 'BGM/trainingMusic.mp3', 27.52, 8 * 4 * 0.43)
+
 for name, rel in SFX:
     src = AUD + rel
     if not os.path.exists(src) or os.path.getsize(src) < 1000:
@@ -152,8 +158,23 @@ for name, rel in SFX:
         continue
     dst = os.path.join(OUT, name + '.mp3')
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', src,
-                    '-ac', '1', '-ar', '22050', '-b:a', '32k', dst], check=True)
+                    '-ac', '1', '-ar', '22050', '-b:a', '32k',
+                    '-map_metadata', '-1', dst], check=True)
     sizes[name + '.mp3'] = os.path.getsize(dst)
+
+name, rel, start, length = BGM
+src = U + '/Audios/' + rel
+if os.path.exists(src) and os.path.getsize(src) > 1000:
+    dst = os.path.join(OUT, name + '.mp3')
+    # 44.1kHz: music through a 22kHz sample rate loses its top end and sounds underwater.
+    # 25ms fades top and tail keep the wrap from clicking.
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-ss', str(start), '-t', str(length),
+                    '-i', src, '-ac', '1', '-b:a', '48k', '-map_metadata', '-1',
+                    '-af', 'afade=t=in:st=0:d=0.025,afade=t=out:st=%.3f:d=0.025' % (length - 0.025),
+                    dst], check=True)
+    sizes[name + '.mp3'] = os.path.getsize(dst)
+else:
+    print('%-12s SKIPPED - missing, or still a Git LFS pointer' % name)
 
 
 # ---- skill icons --------------------------------------------------------

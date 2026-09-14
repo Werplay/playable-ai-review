@@ -1,4 +1,9 @@
 import * as Phaser from 'phaser';
+// Side-effect import: the bundle hangs the plugin class off window.SpinePlugin.
+// It carries the Spine 3.8.95 runtime the player skeleton is converted for.
+import 'phaser/plugins/spine/dist/SpinePlugin.min.js';
+// Side-effect import: the bundle hangs the plugin class off window.SpinePlugin.
+// It carries the Spine 3.8.95 runtime the player skeleton is converted for.
 import { GameScene } from './GameScene';
 
 export class Game extends Phaser.Game {
@@ -15,6 +20,9 @@ export class Game extends Phaser.Game {
       // throw; the canvas listeners are all this game needs.
       input: { windowEvents: false },
       scale: { mode: Phaser.Scale.NONE, autoCenter: Phaser.Scale.CENTER_BOTH },
+      plugins: {
+        scene: [{ key: 'SpinePlugin', plugin: (window as any).SpinePlugin, mapping: 'spine' }]
+      },
       scene: GameScene
     });
   }

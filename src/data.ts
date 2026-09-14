@@ -5,7 +5,9 @@
 
 import fontUrl from 'assets/LuckiestGuy-Regular.woff2';
 
-import player from 'assets/player.png';
+import spinePng from 'assets/spine_player.png';
+import spineAtlas from 'assets/spine_player.atlas';
+import spineJson from 'assets/spine_player.json';
 import eFurry from 'assets/e_furry.png';
 import eFeline from 'assets/e_feline.png';
 import eSpeedbug from 'assets/e_speedbug.png';
@@ -15,6 +17,8 @@ import eBomberkitty from 'assets/e_bomberkitty.png';
 import eRazorclaw from 'assets/e_razorclaw.png';
 import eHammerhead from 'assets/e_hammerhead.png';
 import eBoss from 'assets/e_boss.png';
+import hit from 'assets/hit.png';
+import boom from 'assets/boom.png';
 
 import sky from 'assets/sky.png';
 import clouds1 from 'assets/clouds1.png';
@@ -58,8 +62,24 @@ import hudWave from 'assets/hud_wave.png';
 export const FONT = 'LuckiestGuy';
 export const FONT_URL = fontUrl;
 
-/** Character art is baked out of the Spine skeletons as horizontal strips: the player
- *  plays `flying1`, everyone else plays `idle`, each at its own skeleton's rate. */
+/** The player runs the real Spine skeleton (see tools/build_spine.py); everyone else is
+ *  baked out of their skeletons as horizontal strips playing `idle`.
+ *
+ *  The atlas ships as a data URL whose page line still names the loose PNG, so the page
+ *  name is swapped for the inlined image before the loader ever sees it. */
+export const SPINE = {
+  key: 'player_spine',
+  png: spinePng,
+  atlas: spineAtlas,
+  json: spineJson,
+  skin: 'playerPlane1',
+  page: 'spine_player.png',
+  /** Draws the flying loop 67px wide - the width the old baked strip used. */
+  scale: 0.1039
+};
+
+/** Character art is baked out of the Spine skeletons as horizontal strips playing
+ *  `idle`, each at its own skeleton's rate. */
 export interface Sheet {
   url: string;
   frameWidth: number;
@@ -69,7 +89,6 @@ export interface Sheet {
 }
 
 export const SHEETS: Record<string, Sheet> = {
-  player: { url: player, frameWidth: 67, frameHeight: 69, frames: 40, fps: 30.0 },
   e_furry: { url: eFurry, frameWidth: 44, frameHeight: 50, frames: 40, fps: 30.0 },
   e_feline: { url: eFeline, frameWidth: 48, frameHeight: 51, frames: 40, fps: 30.0 },
   e_bomberkitty: { url: eBomberkitty, frameWidth: 52, frameHeight: 61, frames: 15, fps: 30.0 },
@@ -78,7 +97,9 @@ export const SHEETS: Record<string, Sheet> = {
   e_speedbug: { url: eSpeedbug, frameWidth: 34, frameHeight: 24, frames: 10, fps: 30.0 },
   e_helmetbee: { url: eHelmetbee, frameWidth: 34, frameHeight: 28, frames: 20, fps: 30.0 },
   e_ladybug: { url: eLadybug, frameWidth: 36, frameHeight: 38, frames: 30, fps: 30.0 },
-  e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 }
+  e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 },
+  boom: { url: boom, frameWidth: 80, frameHeight: 65, frames: 16, fps: 30.0 },
+  hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 }
 };
 
 export const IMAGES: Record<string, string> = {

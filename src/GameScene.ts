@@ -704,6 +704,7 @@ export class GameScene extends Phaser.Scene {
     this.joyPointer = null;
     this.joyBase.setVisible(false);
     this.joyKnob.setVisible(false);
+    this.sfx('levelup');
     this.hud.openLevelUp();
   }
 
@@ -748,6 +749,7 @@ export class GameScene extends Phaser.Scene {
 
     switch (o.def.id) {
       case 'multicanon': {
+        this.sfx('shoot'); // MultiCanon.cs: looseCannon @ 0.5
         const n = 1 + Math.floor((lvl + 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.16;
@@ -756,6 +758,7 @@ export class GameScene extends Phaser.Scene {
         return 0.34 - lvl * 0.02;
       }
       case 'warmachine': {
+        this.sfx('shoot', 0.2); // WarMachine.cs: the same clip, quieter
         for (const off of [-12, 12]) {
           const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
           const p = this.shoot('bullet_long', a, 720 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 0.8);

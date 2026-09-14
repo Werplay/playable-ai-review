@@ -186,6 +186,7 @@ export class Hud {
       for (let i = c.length - 1; i >= 3; i--) c.getAt(i).destroy();
       s.rollChoices().forEach((choice, i) => {
         const card = this.makeCard(choice.def, choice.level, () => {
+          s.sfx('tap');
           this.closeLevelUp();
           s.closeLevelUp(choice.def.id);
         });
@@ -199,7 +200,10 @@ export class Hud {
 
     (refresh.getAt(0) as Phaser.GameObjects.Rectangle)
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', deal);
+      .on('pointerdown', () => {
+        s.sfx('tap');
+        deal();
+      });
 
     this.overlay = c;
     this.relayout = () => this.layoutOverlay(header, refresh);

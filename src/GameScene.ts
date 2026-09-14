@@ -7,6 +7,7 @@ import {
   EnemyDef,
   GEMS,
   IMAGES,
+  SOUNDS,
   MINIBOSS_AT,
   PLAYER,
   MIN_ON_SCREEN,
@@ -144,6 +145,7 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- preload
   preload() {
     for (const key in IMAGES) this.load.image(key, IMAGES[key]);
+    this.loadSounds();
     for (const key in SHEETS) {
       const sheet = SHEETS[key];
       this.load.spritesheet(key, sheet.url, {
@@ -152,6 +154,29 @@ export class GameScene extends Phaser.Scene {
       });
     }
     this.loadPlayerSpine();
+  }
+
+  /** Decode the SFX straight into the audio cache instead of going through `load.audio`.
+   *
+   *  Phaser answers a data URL with a fake XHR carrying only `responseText` - a binary
+   *  string from atob, never an ArrayBuffer (Loader/XHRLoader.js) - so `load.audio` hands
+   *  decodeAudioData a string and it throws. Every asset here is inlined as a data URL,
+   *  so that path is the only path. Decoding is fire-and-forget: `sfx` checks the cache,
+   *  which also covers a device that gives us no Web Audio context at all. */
+  private loadSounds() {
+    const ctx = (this.sound as Phaser.Sound.WebAudioSoundManager).context;
+    if (!ctx) return;
+    for (const key in SOUNDS) {
+      const bin = atob(SOUNDS[key].url.split(',')[1]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      // callback form, not the promise: Safari only grew the promise overload in 14.1
+      ctx.decodeAudioData(
+        bytes.buffer,
+        (audio) => this.cache.audio.add(key, audio),
+        () => undefined
+      );
+    }
   }
 
   /** Register the player skeleton without going through `load.spine`.

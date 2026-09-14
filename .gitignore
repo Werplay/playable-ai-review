@@ -50,3 +50,4 @@ docs/.vuepress/dist
 .aider*
 # build tooling output
 build-logs
+spine_preview.png

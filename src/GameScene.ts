@@ -175,7 +175,11 @@ export class GameScene extends Phaser.Scene {
       // callback form, not the promise: Safari only grew the promise overload in 14.1
       ctx.decodeAudioData(
         bytes.buffer,
-        (audio) => this.cache.audio.add(key, audio),
+        (audio) => {
+          this.cache.audio.add(key, audio);
+          // Phaser holds this until the context unlocks on the player's first touch.
+          if (key === 'music') this.sound.play(key, { loop: true, volume: SOUNDS[key].volume });
+        },
         () => undefined
       );
     }

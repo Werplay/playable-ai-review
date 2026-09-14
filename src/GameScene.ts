@@ -568,6 +568,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damagePlayer(amount: number) {
+    this.sfx('hurt');
     this.hurtCd = PLAYER.hurtCooldown;
     this.hp -= amount * this.armorMul;
     this.cameras.main.shake(120, 0.006);
@@ -582,6 +583,7 @@ export class GameScene extends Phaser.Scene {
   private hurtEnemy(e: Enemy, dmg: number, fromX: number, fromY: number) {
     e.hp -= dmg;
     e.flash = 0.08;
+    this.sfx('hit');
     e.spr.setTintFill(0xffffff);
     const dx = e.spr.x - fromX;
     const dy = e.spr.y - fromY;
@@ -601,6 +603,7 @@ export class GameScene extends Phaser.Scene {
     if (idx < 0) return;
     this.enemies.splice(idx, 1);
     this.kills++;
+    this.sfx('boom');
 
     const gem = GEMS[e.def.gem];
     this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);

@@ -7,6 +7,7 @@ import {
   EnemyDef,
   GEMS,
   IMAGES,
+  SOUNDS,
   MINIBOSS_AT,
   PLAYER,
   MIN_ON_SCREEN,
@@ -133,6 +134,8 @@ export class GameScene extends Phaser.Scene {
   private boss: Enemy | null = null;
   private bossDefeated = false;
   private hurtCd = 0;
+  /** Per-sound retrigger gate, keyed like SOUNDS; see `sfx`. */
+  private sfxNext: Record<string, number> = {};
   private regen = 0;
 
   private hud!: Hud;
@@ -144,6 +147,7 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- preload
   preload() {
     for (const key in IMAGES) this.load.image(key, IMAGES[key]);
+    this.loadSounds();
     for (const key in SHEETS) {
       const sheet = SHEETS[key];
       this.load.spritesheet(key, sheet.url, {
@@ -152,6 +156,29 @@ export class GameScene extends Phaser.Scene {
       });
     }
     this.loadPlayerSpine();
+  }
+
+  /** Decode the SFX straight into the audio cache instead of going through `load.audio`.
+   *
+   *  Phaser answers a data URL with a fake XHR carrying only `responseText` - a binary
+   *  string from atob, never an ArrayBuffer (Loader/XHRLoader.js) - so `load.audio` hands
+   *  decodeAudioData a string and it throws. Every asset here is inlined as a data URL,
+   *  so that path is the only path. Decoding is fire-and-forget: `sfx` checks the cache,
+   *  which also covers a device that gives us no Web Audio context at all. */
+  private loadSounds() {
+    const ctx = (this.sound as Phaser.Sound.WebAudioSoundManager).context;
+    if (!ctx) return;
+    for (const key in SOUNDS) {
+      const bin = atob(SOUNDS[key].url.split(',')[1]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      // callback form, not the promise: Safari only grew the promise overload in 14.1
+      ctx.decodeAudioData(
+        bytes.buffer,
+        (audio) => this.cache.audio.add(key, audio),
+        () => undefined
+      );
+    }
   }
 
   /** Register the player skeleton without going through `load.spine`.
@@ -530,7 +557,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** One-shot SFX at the volume the Unity call site used, throttled by its own `gap`.
+   *  The ad network's mute state arrives as sdk volume -> Game.volume, so nothing here
+   *  needs to know about it. */
+  public sfx(key: string, volume = SOUNDS[key].volume) {
+    if (!this.cache.audio.exists(key)) return;
+    if (this.time.now < (this.sfxNext[key] ?? 0)) return;
+    this.sfxNext[key] = this.time.now + SOUNDS[key].gap * 1000;
+    this.sound.play(key, { volume });
+  }
+
   private damagePlayer(amount: number) {
+    this.sfx('hurt');
     this.hurtCd = PLAYER.hurtCooldown;
     this.hp -= amount * this.armorMul;
     this.cameras.main.shake(120, 0.006);
@@ -545,6 +583,7 @@ export class GameScene extends Phaser.Scene {
   private hurtEnemy(e: Enemy, dmg: number, fromX: number, fromY: number) {
     e.hp -= dmg;
     e.flash = 0.08;
+    this.sfx('hit');
     e.spr.setTintFill(0xffffff);
     const dx = e.spr.x - fromX;
     const dy = e.spr.y - fromY;
@@ -564,6 +603,7 @@ export class GameScene extends Phaser.Scene {
     if (idx < 0) return;
     this.enemies.splice(idx, 1);
     this.kills++;
+    this.sfx('boom');
 
     const gem = GEMS[e.def.gem];
     this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);
@@ -664,6 +704,7 @@ export class GameScene extends Phaser.Scene {
     this.joyPointer = null;
     this.joyBase.setVisible(false);
     this.joyKnob.setVisible(false);
+    this.sfx('levelup');
     this.hud.openLevelUp();
   }
 
@@ -708,6 +749,7 @@ export class GameScene extends Phaser.Scene {
 
     switch (o.def.id) {
       case 'multicanon': {
+        this.sfx('shoot'); // MultiCanon.cs: looseCannon @ 0.5
         const n = 1 + Math.floor((lvl + 1) / 2);
         for (let i = 0; i < n; i++) {
           const a = aim + (i - (n - 1) / 2) * 0.16;
@@ -716,6 +758,7 @@ export class GameScene extends Phaser.Scene {
         return 0.34 - lvl * 0.02;
       }
       case 'warmachine': {
+        this.sfx('shoot', 0.2); // WarMachine.cs: the same clip, quieter
         for (const off of [-12, 12]) {
           const a = aim + Phaser.Math.FloatBetween(-0.07, 0.07);
           const p = this.shoot('bullet_long', a, 720 * sp, atk * (1.1 + lvl * 0.6), 1.1, 1, 0.8);

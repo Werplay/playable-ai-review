@@ -20,6 +20,8 @@ sdk.init((width: number, height: number) => {
     sdk.on('pause', game.pause, game);
     sdk.on('resume', game.resume, game);
     sdk.on('volume', game.volume, game);
+    // A network can hand us a muted placement without ever firing the event.
+    game.volume(sdk.volume);
     sdk.on('finish', game.finish, game);
   });
 });

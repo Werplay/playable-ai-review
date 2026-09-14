@@ -13,6 +13,7 @@ import {
   RUN_LIMIT,
   SKILLS,
   SHEETS,
+  SPINE,
   SKILL_BY_ID,
   SkillDef,
   WAVES,
@@ -22,6 +23,28 @@ import {
 import { Hud } from './Hud';
 
 const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
+
+/** The Phaser Spine plugin ships no types; this is the slice of SpineGameObject used here. */
+interface SpineObject extends Phaser.GameObjects.GameObject {
+  x: number;
+  y: number;
+  rotation: number;
+  scaleY: number;
+  skeleton: any;
+  setDepth(v: number): SpineObject;
+  setScale(x: number, y?: number): SpineObject;
+  setSkinByName(name: string): SpineObject;
+  setSlotsToSetupPose(): SpineObject;
+  setMix(from: string, to: string, duration: number): SpineObject;
+  play(name: string, loop?: boolean, ignoreIfPlaying?: boolean): SpineObject;
+}
+
+/** The real game answers a horizontal direction switch with the short `flip1` roll
+ *  (PlayerMovement.CheckRotation); the plane is mirrored on the spot, never inverted. */
+const FLIP = { anim: 'flip1', duration: 0.167, mix: 0.12 };
+/** Neither Spine renderer reads Phaser's flipX/flipY flags - a SpineGameObject only
+ *  mirrors on a negative scale, so facing left is a negative scaleY. */
+const PLANE_SCALE = SPINE.scale * ART_SCALE;
 
 interface Enemy {
   id: number;
@@ -72,7 +95,7 @@ interface Owned {
 
 export class GameScene extends Phaser.Scene {
   // world
-  private player!: Phaser.GameObjects.Sprite;
+  private player!: SpineObject;
   private sky!: Phaser.GameObjects.Image;
   private cloudsFar!: Phaser.GameObjects.TileSprite;
   private cloudsNear!: Phaser.GameObjects.TileSprite;
@@ -89,6 +112,8 @@ export class GameScene extends Phaser.Scene {
   private joyOrigin = new Phaser.Math.Vector2();
   private move = new Phaser.Math.Vector2();
   private vel = new Phaser.Math.Vector2();
+  private faceLeft = false;
+  private flipT = 0;
 
   // run state
   public state: 'intro' | 'play' | 'levelup' | 'over' = 'intro';
@@ -126,6 +151,31 @@ export class GameScene extends Phaser.Scene {
         frameHeight: sheet.frameHeight
       });
     }
+    this.loadPlayerSpine();
+  }
+
+  /** Register the player skeleton without going through `load.spine`.
+   *
+   *  Every asset in a playable is inlined as a data URL, and the Spine plugin bundles a
+   *  copy of Phaser's loader that predates data-URL support - `load.spine` stalls the
+   *  whole queue on the atlas page and the scene never reaches create(). The plugin only
+   *  reads three things back out of the caches, so they go in directly; the page image
+   *  goes through Phaser's own loader, which handles data URLs fine. */
+  private loadPlayerSpine() {
+    this.load.image(`${SPINE.key}:${SPINE.page}`, SPINE.png);
+    this.cache.json.add(SPINE.key, JSON.parse(SPINE.json));
+    (this.cache as any).custom.spine.add(SPINE.key, {
+      preMultipliedAlpha: false,
+      data: atob(SPINE.atlas.slice(SPINE.atlas.indexOf(',') + 1)),
+      prefix: ''
+    });
+  }
+
+  /** One plane skeleton, skinned and scaled to the size the old baked strip drew at. */
+  private makeSkeleton(): SpineObject {
+    const o = (this.add as any).spine(0, 0, SPINE.key, 'flying1', true) as SpineObject;
+    o.setSkinByName(SPINE.skin).setSlotsToSetupPose();
+    return o.setDepth(DEPTH.player).setScale(PLANE_SCALE);
   }
 
   /** One looping animation per baked strip, played at the skeleton's own rate.
@@ -144,7 +194,8 @@ export class GameScene extends Phaser.Scene {
         key,
         frames: this.anims.generateFrameNumbers(key, { start: 0, end: Math.max(0, total - 1) }),
         frameRate: sheet.fps,
-        repeat: -1
+        // characters loop their idle; the hit spark and death burst are one-shots
+        repeat: key.startsWith('e_') ? -1 : 0
       });
     }
   }
@@ -170,9 +221,15 @@ export class GameScene extends Phaser.Scene {
       .setDepth(DEPTH.bg + 2);
 
     this.createAnims();
-    this.player = this.add.sprite(0, 0, 'player').setDepth(DEPTH.player).setScale(ART_SCALE);
-    this.player.play('player');
+    // Spine's canvas renderer drops every mesh attachment unless triangle rendering is
+    // switched on - on a device with no WebGL the plane would otherwise fly as a head and
+    // a propeller. The WebGL renderer has no such flag and ignores this.
+    const spineRenderer = (this as any).spine?.skeletonRenderer;
+    if (spineRenderer && 'triangleRendering' in spineRenderer) spineRenderer.triangleRendering = true;
 
+    this.player = this.makeSkeleton();
+    this.player.setMix('flying1', FLIP.anim, FLIP.mix).setMix(FLIP.anim, 'flying1', FLIP.mix);
+    this.player.play('flying1', true);
     cam.startFollow(this.player, false, 0.12, 0.12);
     cam.setBackgroundColor('#57bdf9');
 
@@ -335,11 +392,17 @@ export class GameScene extends Phaser.Scene {
     this.player.x += this.vel.x * dt;
     this.player.y += this.vel.y * dt;
 
-    if (this.vel.lengthSq() > 400) {
-      const a = Math.atan2(this.vel.y, this.vel.x);
-      this.player.setFlipY(Math.abs(a) > Math.PI / 2);
-      this.player.setRotation(a);
+    // A horizontal input sign change starts the roll, at whatever speed the plane is at.
+    const dir = Math.sign(this.move.x);
+    if (dir !== 0 && dir < 0 !== this.faceLeft) {
+      this.faceLeft = dir < 0;
+      this.flipT = FLIP.duration;
+      this.player.play(FLIP.anim, false);
     }
+    if (this.vel.lengthSq() > 400) this.player.rotation = Math.atan2(this.vel.y, this.vel.x);
+    // Mirroring follows the nose, so the plane reads right side up in either direction.
+    this.player.scaleY = Math.abs(this.player.rotation) > Math.PI / 2 ? -PLANE_SCALE : PLANE_SCALE;
+    if (this.flipT > 0 && (this.flipT -= dt) <= 0) this.player.play('flying1', true);
     this.player.y += Math.sin(this.elapsed * 3) * 0.25;
 
     this.hurtCd = Math.max(0, this.hurtCd - dt);
@@ -471,8 +534,8 @@ export class GameScene extends Phaser.Scene {
     this.hurtCd = PLAYER.hurtCooldown;
     this.hp -= amount * this.armorMul;
     this.cameras.main.shake(120, 0.006);
-    this.player.setTintFill(0xff4444);
-    this.time.delayedCall(90, () => this.player.clearTint());
+    this.player.skeleton.color.set(1, 0.35, 0.3, 1);
+    this.time.delayedCall(90, () => this.player.skeleton.color.set(1, 1, 1, 1));
     if (this.hp <= 0) {
       this.hp = 0;
       this.finishRun(false);
@@ -486,6 +549,9 @@ export class GameScene extends Phaser.Scene {
     const dx = e.spr.x - fromX;
     const dy = e.spr.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
+    // Unity spawns PlayerBulletSplash at the bullet, rotated the way it was travelling.
+    const spark = this.add.sprite(fromX, fromY, 'hit').setDepth(DEPTH.fx).setRotation(Math.atan2(dy, dx));
+    spark.play('hit').once('animationcomplete', () => spark.destroy());
     if (!e.def.boss) {
       e.knockX += (dx / d) * 70;
       e.knockY += (dy / d) * 70;
@@ -509,6 +575,15 @@ export class GameScene extends Phaser.Scene {
       }
       this.cameras.main.shake(400, 0.02);
     }
+
+    // Unity despawns the plane and plays one `explosion` skeleton over it, at a random
+    // roll and size (Enemy.SpawnExplosions -> Explosions.GenerateParticlesAt).
+    const boom = this.add
+      .sprite(e.spr.x, e.spr.y, 'boom')
+      .setDepth(DEPTH.fx)
+      .setRotation(Math.random() * Math.PI * 2)
+      .setScale((e.def.radius / 18) * Phaser.Math.FloatBetween(0.9, 1.2));
+    boom.play('boom').once('animationcomplete', () => boom.destroy());
 
     const spr = e.spr;
     spr.setTintFill(0xffffff);
@@ -629,7 +704,7 @@ export class GameScene extends Phaser.Scene {
     const target = this.nearestEnemy(700);
     const aim = target
       ? Math.atan2(target.spr.y - this.player.y, target.spr.x - this.player.x)
-      : this.player.rotation * (this.player.flipY ? -1 : 1);
+      : this.player.rotation * (this.player.scaleY < 0 ? -1 : 1);
 
     switch (o.def.id) {
       case 'multicanon': {
@@ -854,7 +929,11 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- resize
   public resize(width: number, height: number) {
     this.cameras.resize(width, height);
+    // The SDK resizes on its own schedule and can beat create() to the punch - loading
+    // the player skeleton keeps the scene in preload noticeably longer than it used to.
+    // create() ends by calling this again, so an early call has nothing to do here.
+    if (!this.hud) return;
     this.drawBackground();
-    this.hud?.resize(width, height);
+    this.hud.resize(width, height);
   }
 }

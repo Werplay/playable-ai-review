@@ -55,6 +55,7 @@ import iXp from 'assets/i_xp.png';
 import iCooldown from 'assets/i_cooldown.png';
 import iBulletspeed from 'assets/i_bulletspeed.png';
 
+import bgm from 'assets/bgm.mp3';
 import sfxShoot from 'assets/sfx_shoot.mp3';
 import sfxHit from 'assets/sfx_hit.mp3';
 import sfxBoom from 'assets/sfx_boom.mp3';
@@ -120,6 +121,8 @@ export interface Sound {
 }
 
 export const SOUNDS: Record<string, Sound> = {
+  /** One 8-bar phrase of the loop GameManager.cs runs for this mode, at its volume. */
+  music: { url: bgm, volume: 0.25, gap: 0 },
   shoot: { url: sfxShoot, volume: 0.5, gap: 0.1 },
   hit: { url: sfxHit, volume: 0.15, gap: 0.06 },
   boom: { url: sfxBoom, volume: 0.35, gap: 0.09 },

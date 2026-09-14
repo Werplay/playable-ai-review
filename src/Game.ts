@@ -38,10 +38,14 @@ export class Game extends Phaser.Game {
 
   public pause(): void {
     this.scene.pause('GameScene');
+    // Pausing the scene stops nothing that is already playing - the music would carry on
+    // over whatever the network put in front of the ad.
+    this.sound.pauseAll();
   }
 
   public resume(): void {
     this.scene.resume('GameScene');
+    this.sound.resumeAll();
   }
 
   public volume(value: number): void {

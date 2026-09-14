@@ -55,6 +55,13 @@ import iXp from 'assets/i_xp.png';
 import iCooldown from 'assets/i_cooldown.png';
 import iBulletspeed from 'assets/i_bulletspeed.png';
 
+import sfxShoot from 'assets/sfx_shoot.mp3';
+import sfxHit from 'assets/sfx_hit.mp3';
+import sfxBoom from 'assets/sfx_boom.mp3';
+import sfxHurt from 'assets/sfx_hurt.mp3';
+import sfxLevelup from 'assets/sfx_levelup.mp3';
+import sfxTap from 'assets/sfx_tap.mp3';
+
 import hudTime from 'assets/hud_time.png';
 import hudKills from 'assets/hud_kills.png';
 import hudWave from 'assets/hud_wave.png';
@@ -100,6 +107,25 @@ export const SHEETS: Record<string, Sheet> = {
   e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 },
   boom: { url: boom, frameWidth: 80, frameHeight: 65, frames: 16, fps: 30.0 },
   hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 }
+};
+
+/** SFX from the Unity project's Assets/Audios/SFX, baked by tools/build_assets.py.
+ *  Volumes are the ones the Unity call sites pass. `gap` is the shortest time between
+ *  retriggers: a survivor loadout fires far faster than these clips run, and a stack of
+ *  the same shot reads as noise rather than as a gun. */
+export interface Sound {
+  url: string;
+  volume: number;
+  gap: number;
+}
+
+export const SOUNDS: Record<string, Sound> = {
+  shoot: { url: sfxShoot, volume: 0.5, gap: 0.1 },
+  hit: { url: sfxHit, volume: 0.15, gap: 0.06 },
+  boom: { url: sfxBoom, volume: 0.35, gap: 0.09 },
+  hurt: { url: sfxHurt, volume: 0.5, gap: 0.4 },
+  levelup: { url: sfxLevelup, volume: 0.6, gap: 0 },
+  tap: { url: sfxTap, volume: 0.5, gap: 0 }
 };
 
 export const IMAGES: Record<string, string> = {

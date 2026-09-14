@@ -12,7 +12,7 @@ Cell width is the on-screen size, 1:1. The game canvas is CSS-pixel sized, not
 device-pixel sized, so anything beyond 1x is invisible and paid for twice - once in
 PNG bytes, again in base64 inflation.
 """
-import os, re, sys
+import os, re, subprocess, sys
 from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import spinestrip
@@ -130,6 +130,30 @@ k = HIT_W / cw
 strip = strip.resize((HIT_W * len(cells), max(1, round(ch * k))), Image.LANCZOS)
 put(strip, 'hit.png', 48)
 frames_meta['hit'] = (HIT_W, strip.height, len(cells), 30.0)
+
+
+# ---- sfx ----------------------------------------------------------------
+# Assets/Audios/SFX in the Unity project is Git LFS; run `git lfs pull` there first or
+# these stay 130-byte pointers. Mono 22kHz 32kbps - every clip is under two seconds and
+# base64 inlining makes an ad pay for each byte one and a third times.
+AUD = U + '/Audios/SFX/'
+SFX = [
+    ('sfx_shoot',   'looseCannon.mp3'),          # every cannon in the reference
+    ('sfx_hit',     'enemyBeingHit.mp3'),
+    ('sfx_boom',    'explosionEnemyPlane.mp3'),  # Enemy.SpawnExplosions
+    ('sfx_hurt',    'playerHit.mp3'),
+    ('sfx_levelup', 'levelUp.mp3'),              # InGameXpHandler
+    ('sfx_tap',     'test/popUp.mp3'),
+]
+for name, rel in SFX:
+    src = AUD + rel
+    if not os.path.exists(src) or os.path.getsize(src) < 1000:
+        print('%-12s SKIPPED - missing, or still a Git LFS pointer' % name)
+        continue
+    dst = os.path.join(OUT, name + '.mp3')
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', src,
+                    '-ac', '1', '-ar', '22050', '-b:a', '32k', dst], check=True)
+    sizes[name + '.mp3'] = os.path.getsize(dst)
 
 
 # ---- skill icons --------------------------------------------------------

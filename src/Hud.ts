@@ -6,6 +6,24 @@ import type { GameScene } from './GameScene';
 const D = { hud: 100, overlay: 200 };
 const GOLD = '#ffd34d';
 
+/** Colours read off the in-game "Select a Skill" panel. Weapons glow green, passives
+ *  blue; the wedge is the same hue painted behind the icon inside the card. */
+const CARD = {
+  /** Reference size every card is drawn at - 4:1, the aspect the real panel uses. The
+   *  layout scales the whole container to fit instead of redrawing it, so a resize or a
+   *  mid-run rotation only moves and rescales what is already on screen. */
+  w: 520,
+  h: 130,
+  gap: 14,
+  fill: 0x333d5c,
+  radius: 16,
+  weapon: { glow: 0x6cf542, wedge: 0x4bbf27, title: '#ffffff' },
+  passive: { glow: 0x9fe8ff, wedge: 0x2f7fd4, title: '#ffffff' },
+  slot: 0x1b2036,
+  pipOn: 0xffc93c,
+  pipOff: 0x8c93a8
+};
+
 /** A container's scrollFactor drives rendering but input hit-testing reads each
  *  child's own value — so pin the whole subtree or taps land camera-scroll away. */
 function pin(root: Phaser.GameObjects.GameObject) {
@@ -157,101 +175,188 @@ export class Hud {
   // -------------------------------------------------------------- level up
   openLevelUp() {
     const s = this.s;
-    const choices = s.rollChoices();
     const c = s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay);
-
     const dim = s.add.rectangle(0, 0, this.w, this.h, 0x04101d, 0.82).setOrigin(0);
-    const title = s.add.text(0, 0, 'LEVEL UP!', this.label(40, GOLD)).setOrigin(0.5);
-    c.add([dim, title]);
+    const header = this.makeHeader();
+    const refresh = this.makeRefresh();
+    c.add([dim, header, refresh]);
 
-    // three across only when three actually fit; otherwise stack wide rows
-    const narrow = this.w < 620;
-    const cardW = narrow ? Math.min(this.w - 40, 400) : Math.min(260, (this.w - 88) / 3);
-    const cardH = narrow ? Math.min(116, (this.h - 170) / 3) : Math.min(300, this.h - 170);
-
-    choices.forEach((choice, i) => {
-      const card = this.makeCard(choice.def, choice.level, cardW, cardH, narrow);
-      card.setData('index', i);
-      c.add(card);
-      card.setAlpha(0);
-      card.setData('slideFrom', 40);
-      s.tweens.add({ targets: card, alpha: 1, duration: 200, delay: 60 * i });
-      (card.getAt(0) as Phaser.GameObjects.Rectangle).setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-        this.closeLevelUp();
-        s.closeLevelUp(choice.def.id);
+    // Cards are rebuilt in place so Refresh can reroll without tearing the panel down.
+    const deal = () => {
+      for (let i = c.length - 1; i >= 3; i--) c.getAt(i).destroy();
+      s.rollChoices().forEach((choice, i) => {
+        const card = this.makeCard(choice.def, choice.level, () => {
+          this.closeLevelUp();
+          s.closeLevelUp(choice.def.id);
+        });
+        card.setData('index', i).setAlpha(0);
+        c.add(card);
+        s.tweens.add({ targets: card, alpha: 1, duration: 200, delay: 60 * i });
       });
-    });
+      pin(c);
+      this.relayout?.();
+    };
+
+    (refresh.getAt(0) as Phaser.GameObjects.Rectangle)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', deal);
 
     this.overlay = c;
-    pin(c);
-    this.relayout = () => this.layoutOverlay(cardW, cardH, narrow, title);
-    this.relayout();
+    this.relayout = () => this.layoutOverlay(header, refresh);
+    deal();
   }
 
-  private makeCard(def: SkillDef, level: number, w: number, h: number, narrow: boolean) {
+  /** "◆ ——  SELECT A SKILL  —— ◆" */
+  private makeHeader() {
     const s = this.s;
-    const isWeapon = def.kind === 'weapon';
-    const bg = s.add.rectangle(0, 0, w, h, 0x11263d, 0.98).setOrigin(0.5);
-    bg.setStrokeStyle(4, isWeapon ? 0xffb23d : 0x54c8ff);
+    const text = s.add.text(0, 0, 'SELECT A SKILL', this.label(28)).setOrigin(0.5);
+    const rule = s.add.graphics();
+    const half = text.width / 2;
+    for (const dir of [-1, 1]) {
+      const near = dir * (half + 18);
+      const far = dir * (half + 86);
+      rule.lineStyle(4, 0xffffff, 0.9).beginPath().moveTo(near, 0).lineTo(far, 0).strokePath();
+      this.diamond(rule, dir * (half + 104), 0, 7, 0xffffff, 1);
+    }
+    return s.add.container(0, 0, [rule, text]);
+  }
 
-    const icon = s.add
-      .image(narrow ? -w / 2 + 56 : 0, narrow ? 0 : -h / 2 + h * 0.28, def.icon)
-      .setScale(narrow ? 0.82 : 0.98);
+  private makeRefresh() {
+    const s = this.s;
+    const w = 260;
+    const h = 62;
+    const g = s.add.graphics();
+    g.fillStyle(0xe09b00, 1).fillRoundedRect(-w / 2, -h / 2 + 6, w, h, 12);
+    g.fillStyle(0xffc83d, 1).fillRoundedRect(-w / 2, -h / 2, w, h - 4, 12);
+    const text = s.add.text(0, 0, 'Refresh', this.label(28)).setOrigin(0.5);
+    const hit = s.add.rectangle(0, 0, w, h, 0x000000, 0).setOrigin(0.5);
+    return s.add.container(0, 0, [hit, g, text]);
+  }
 
-    const textX = narrow ? -w / 2 + 112 : 0;
-    const ox = narrow ? 0 : 0.5;
-    const wrap = narrow ? w - 132 : w - 36;
+  /** One full-width skill row: glow border, tinted wedge, framed icon, rarity pips. */
+  private makeCard(def: SkillDef, level: number, onPick: () => void) {
+    const s = this.s;
+    const w = CARD.w;
+    const h = CARD.h;
+    const tone = def.kind === 'weapon' ? CARD.weapon : CARD.passive;
+    const x0 = -w / 2;
+    const y0 = -h / 2;
 
-    const name = s.add
-      .text(textX, 0, def.title, this.label(narrow ? 22 : 24, isWeapon ? '#ffce5c' : '#8fe3ff'))
-      .setOrigin(ox, 0);
-    const desc = s.add
-      .text(textX, 0, def.desc, {
-        ...this.label(narrow ? 15 : 17),
-        wordWrap: { width: wrap },
-        align: narrow ? 'left' : 'center'
-      })
-      .setOrigin(ox, 0);
-    const lv = s.add
-      .text(textX, 0, level === 1 ? 'NEW!' : `Lv ${level}`, this.label(narrow ? 16 : 19, GOLD))
-      .setOrigin(ox, 0);
+    const g = s.add.graphics();
+    // outer glow: the same rounded outline stroked wider and fainter each pass
+    for (let i = 3; i >= 1; i--) {
+      g.lineStyle(3 + i * 3, tone.glow, 0.1 * i).strokeRoundedRect(x0, y0, w, h, CARD.radius + i);
+    }
+    g.fillStyle(CARD.fill, 1).fillRoundedRect(x0, y0, w, h, CARD.radius);
 
-    // One stacked text column in both layouts — pinning the level line to the card
-    // bottom lets a three-line description run straight through it.
-    const gap = narrow ? 4 : 8;
-    const stack = name.height + desc.height + lv.height + gap * 2;
-    let y = narrow ? -stack / 2 : Math.min(h * 0.06, h / 2 - stack - 12);
-    for (const t of [name, desc, lv]) {
-      t.y = y;
-      y += t.height + gap;
+    // Wedge. Its two left corners are the card's own rounded corners, drawn into the
+    // path - a geometry mask would have to track the card's world position and does not.
+    const wedgeW = h * 1.28;
+    const slant = h * 0.34;
+    const r = CARD.radius;
+    const wedge = s.add.graphics();
+    wedge.fillStyle(tone.wedge, 1).beginPath();
+    wedge.moveTo(x0 + r, y0);
+    wedge.lineTo(x0 + wedgeW, y0);
+    wedge.lineTo(x0 + wedgeW - slant, y0 + h);
+    wedge.lineTo(x0 + r, y0 + h);
+    wedge.arc(x0 + r, y0 + h - r, r, Math.PI / 2, Math.PI);
+    wedge.lineTo(x0, y0 + r);
+    wedge.arc(x0 + r, y0 + r, r, Math.PI, Math.PI * 1.5);
+    wedge.closePath();
+    wedge.fillPath();
+
+    g.lineStyle(4, tone.glow, 1).strokeRoundedRect(x0, y0, w, h, CARD.radius);
+
+    // icon slot
+    const pad = h * 0.1;
+    const slot = h - pad * 2;
+    const sx = x0 + pad;
+    const frame = s.add.graphics();
+    frame.fillStyle(CARD.slot, 1).fillRoundedRect(sx, y0 + pad, slot, slot, 12);
+    frame.lineStyle(4, 0xdfe7f5, 1).strokeRoundedRect(sx, y0 + pad, slot, slot, 12);
+    const icon = s.add.image(sx + slot / 2, y0 + pad + slot / 2, def.icon);
+    icon.setScale(Math.min(1, (slot - 16) / Math.max(icon.width, icon.height)));
+
+    // rarity pips along the bottom of the wedge, gold up to the level being offered
+    const pips = s.add.graphics();
+    const total = Math.min(def.max, 5);
+    const step = Math.min(18, (wedgeW - slant - pad * 2) / total);
+    for (let i = 0; i < total; i++) {
+      const on = i < level;
+      this.diamond(pips, sx + step / 2 + i * step, y0 + h - pad * 0.9, 7, on ? CARD.pipOn : CARD.pipOff, 1);
     }
 
-    return s.add.container(0, 0, [bg, icon, name, desc, lv]);
+    const textX = x0 + pad * 2 + slot;
+    const wrap = w - (textX - x0) - pad * 2;
+    const title = s.add.text(textX, 0, def.title, this.label(26, tone.title)).setOrigin(0, 1);
+    const desc = s.add
+      .text(textX, 0, def.desc, { ...this.label(17, '#cdd4e4'), wordWrap: { width: wrap } })
+      .setOrigin(0, 0);
+
+    // Title sits just above the description block, the pair centred in the card.
+    const stack = title.height + 6 + desc.height;
+    title.y = -stack / 2 + title.height;
+    desc.y = title.y + 6;
+
+    const badge = s.add
+      .text(x0 + w - pad, y0 + pad, level === 1 ? 'NEW!' : `Lv ${level}`, this.label(16, GOLD))
+      .setOrigin(1, 0);
+
+    const hit = s.add.rectangle(0, 0, w, h, 0x000000, 0).setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true }).on('pointerdown', onPick);
+
+    return s.add.container(0, 0, [g, wedge, frame, icon, pips, title, desc, badge, hit]);
   }
 
-  private layoutOverlay(cardW: number, cardH: number, narrow: boolean, title: Phaser.GameObjects.Text) {
+  private diamond(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, alpha: number) {
+    g.fillStyle(color, alpha).fillPoints(
+      [
+        new Phaser.Geom.Point(x, y - r),
+        new Phaser.Geom.Point(x + r, y),
+        new Phaser.Geom.Point(x, y + r),
+        new Phaser.Geom.Point(x - r, y)
+      ],
+      true
+    );
+  }
+
+  /** Header tucks in on a short screen so three cards still fit under it. */
+  private headerY() {
+    return Phaser.Math.Clamp(this.h * 0.14, 40, 110);
+  }
+
+  /** Uniform scale that fits the card to the width and the stack to the height. */
+  private cardScale() {
+    const room = this.h - this.headerY() - 40 - 96; // header rule above, Refresh below
+    const perCard = (room - 2 * CARD.gap) / 3;
+    return Phaser.Math.Clamp(Math.min((this.w - 32) / CARD.w, perCard / CARD.h), 0.35, 1);
+  }
+
+  private layoutOverlay(header: Phaser.GameObjects.Container, refresh: Phaser.GameObjects.Container) {
     if (!this.overlay) return;
     const c = this.overlay;
     (c.getAt(0) as Phaser.GameObjects.Rectangle).setSize(this.w, this.h);
 
-    const gap = narrow ? 14 : 22;
-    const span = narrow ? 3 * cardH + 2 * gap : cardH;
-    const titleY = Math.max(this.h * 0.12, 74);
-    const top = titleY + title.height / 2 + (narrow ? 26 : 20);
-    // centre the stack when there is room, but never let it ride up under the title
-    const centre = Phaser.Math.Clamp(this.h / 2, top + span / 2, Math.max(top + span / 2, this.h - span / 2 - 12));
+    const k = this.cardScale();
+    const cardH = CARD.h * k;
+    const gap = CARD.gap * k;
+    const span = 3 * cardH + 2 * gap;
+    const headerY = this.headerY();
+    const top = headerY + 40 * k;
+    const centre = Phaser.Math.Clamp(
+      this.h / 2,
+      top + span / 2,
+      Math.max(top + span / 2, this.h - span / 2 - 84 * k)
+    );
 
-    title.setPosition(this.w / 2, titleY);
+    header.setPosition(this.w / 2, headerY).setScale(k);
+    refresh.setPosition(this.w / 2, Math.min(centre + span / 2 + 48 * k, this.h - 38 * k)).setScale(k);
 
-    for (let i = 2; i < c.length; i++) {
+    for (let i = 3; i < c.length; i++) {
       const card = c.getAt(i) as Phaser.GameObjects.Container;
-      const k = card.getData('index') as number;
-      if (narrow) {
-        card.setPosition(this.w / 2, centre - span / 2 + cardH / 2 + k * (cardH + gap));
-      } else {
-        const row = 3 * cardW + 2 * gap;
-        card.setPosition(this.w / 2 - row / 2 + cardW / 2 + k * (cardW + gap), centre);
-      }
+      const idx = card.getData('index') as number;
+      card.setPosition(this.w / 2, centre - span / 2 + cardH / 2 + idx * (cardH + gap)).setScale(k);
     }
   }
 

@@ -134,6 +134,8 @@ export class GameScene extends Phaser.Scene {
   private boss: Enemy | null = null;
   private bossDefeated = false;
   private hurtCd = 0;
+  /** Per-sound retrigger gate, keyed like SOUNDS; see `sfx`. */
+  private sfxNext: Record<string, number> = {};
   private regen = 0;
 
   private hud!: Hud;
@@ -553,6 +555,16 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  /** One-shot SFX at the volume the Unity call site used, throttled by its own `gap`.
+   *  The ad network's mute state arrives as sdk volume -> Game.volume, so nothing here
+   *  needs to know about it. */
+  public sfx(key: string, volume = SOUNDS[key].volume) {
+    if (!this.cache.audio.exists(key)) return;
+    if (this.time.now < (this.sfxNext[key] ?? 0)) return;
+    this.sfxNext[key] = this.time.now + SOUNDS[key].gap * 1000;
+    this.sound.play(key, { volume });
   }
 
   private damagePlayer(amount: number) {

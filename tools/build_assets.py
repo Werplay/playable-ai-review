@@ -1,7 +1,8 @@
 """Extract Explottens art from the Unity project into the playable's assets/ folder.
 
-Characters are baked as horizontal sprite strips from their Spine animations
-(player: flying1, everyone else: idle) rather than single setup-pose frames.
+Enemies are baked as horizontal sprite strips from their `idle` Spine animations rather
+than single setup-pose frames. The player is not here: it ships the live skeleton instead,
+built by build_spine.py, so it can roll through `flip1` on a direction switch.
 
 Frame count is the animation's own duration x 30: every skeleton here is authored on
 a 30fps grid (keyframes all land on 1/30s boundaries, and Spine omits `skeleton.fps`
@@ -11,7 +12,7 @@ Cell width is the on-screen size, 1:1. The game canvas is CSS-pixel sized, not
 device-pixel sized, so anything beyond 1x is invisible and paid for twice - once in
 PNG bytes, again in base64 inflation.
 """
-import os, sys
+import os, re, sys
 from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import spinestrip
@@ -20,7 +21,7 @@ U = '/Users/zeeshan/Desktop/work/Explottens-FtP/ExplottensUnityProject/Assets'
 OUT = '/Users/zeeshan/Desktop/work/playable-explottens-survivor/assets'
 NE = U + '/SpineObjects/EnemiesCombined/NormalEnemies/'
 BO = U + '/SpineObjects/EnemiesCombined/Bots/'
-PL = U + '/SpineObjects/Player/UpdatedPlayer/'
+EX = U + '/SpineObjects/Arsenal/Explosion/'
 os.makedirs(OUT, exist_ok=True)
 sizes = {}
 
@@ -48,7 +49,6 @@ OVERSAMPLE = 1.0
 
 # (name, skeleton, atlas, animation, on-screen width, skin)
 CHARS = [
-    ('player',        PL + 'player.json',      PL + 'player.atlas.txt',      'flying1',  67, 'playerPlane1'),
     ('e_furry',       NE + 'Furry.json',       NE + 'EnemyPlanes.atlas.txt', 'idle',     44, 'default'),
     ('e_feline',      NE + 'Feline.json',      NE + 'EnemyPlanes.atlas.txt', 'idle',     48, 'default'),
     ('e_bomberkitty', NE + 'BomberKitty.json', NE + 'EnemyPlanes.atlas.txt', 'idle',     52, 'default'),
@@ -59,6 +59,9 @@ CHARS = [
     ('e_ladybug',     BO + 'LadyBug.json',     BO + 'BugBots.atlas.txt',     'idle',     36, 'default'),
     # vaderboss ships two idle loops; idle2 is the shorter one, same 30fps, half the bytes
     ('e_boss',        NE + 'vaderboss.json',   NE + 'EnemyPlanes.atlas.txt', 'idle2',   150, 'default'),
+    # Enemy death burst. Unity rolls Air2/Aoe/Player (Enemy.SpawnExplosions); two of the
+    # three land on explosion4/5, so the playable bakes explosion4 and reuses it.
+    ('boom',          EX + 'explosion.json',   EX + 'explosion.atlas.txt',   'explosion4', 80, 'default'),
 ]
 
 import spineanim, json as _json
@@ -91,6 +94,43 @@ flat(A + 'ball.png', 'w_yarnball.png', 32)
 flat(A + 'protonBullet.png', 'w_propeller.png', 34)
 flat(A + 'fish.png', 'w_fish.png', 36)
 flat('/Sprites/Arsenal/shield.png', 'w_shield.png', 160, 32)
+
+# ---- bullet hit spark ----------------------------------------------------
+# Unity: PlayerBulletSplash.prefab - a SpriteRenderer driven by Splash.anim, 4 frames
+# of the arsenal atlas at 30fps, spawned rotated to the bullet on every enemy hit
+# (GameSharedData.RemovePlayerBullet). Each frame carries its own pivot, so the strip
+# aligns every frame on its pivot instead of its box - otherwise the burst wanders.
+HIT_W = 30  # on-screen width; the prefab draws unscaled, so this is the tuning knob
+
+def unity_sprites(png, names):
+    meta = open(png + '.meta', encoding='utf-8').read()
+    found = {}
+    for blk in meta.split('- serializedVersion:'):
+        m = re.search(r'name: (\S+)', blk)
+        if not m or m.group(1) not in names: continue
+        r = re.search(r'rect:\s*\n\s*serializedVersion: \d+\s*\n\s*x: ([\d.]+)\s*\n'
+                      r'\s*y: ([\d.]+)\s*\n\s*width: ([\d.]+)\s*\n\s*height: ([\d.]+)', blk)
+        pv = re.search(r'pivot: \{x: ([-\d.]+), y: ([-\d.]+)\}', blk)
+        found[m.group(1)] = tuple(float(v) for v in r.groups() + pv.groups())
+    return [found[n] for n in names]
+
+hit_src = U + A + 'arsenal.png'
+hit_sheet = Image.open(hit_src).convert('RGBA')
+cells = []
+for x, y, w, h, pvx, pvy in unity_sprites(hit_src, ['bullethit_0000%d' % i for i in (1, 2, 3, 4)]):
+    crop = hit_sheet.crop((int(x), int(hit_sheet.height - y - h), int(x + w), int(hit_sheet.height - y)))
+    cells.append((crop, pvx * w, (1 - pvy) * h))  # pivot in top-left pixel coords
+left = max(px for _, px, _ in cells);  right = max(c.width - px for c, px, _ in cells)
+top = max(py for _, _, py in cells);   bot = max(c.height - py for c, _, py in cells)
+cw, ch = round(left + right), round(top + bot)
+strip = Image.new('RGBA', (cw * len(cells), ch))
+for i, (c, px, py) in enumerate(cells):
+    strip.alpha_composite(c, (i * cw + round(left - px), round(top - py)))
+k = HIT_W / cw
+strip = strip.resize((HIT_W * len(cells), max(1, round(ch * k))), Image.LANCZOS)
+put(strip, 'hit.png', 48)
+frames_meta['hit'] = (HIT_W, strip.height, len(cells), 30.0)
+
 
 # ---- skill icons --------------------------------------------------------
 ICONS = [
@@ -137,7 +177,7 @@ def write_sheet_table(meta):
     src = open(ts, encoding='utf-8').read()
     start = src.index('export const SHEETS: Record<string, Sheet> = {')
     end = src.index('};', start) + 2
-    var = {'player': 'player'}
+    var = {'player': 'player', 'hit': 'hit', 'boom': 'boom'}
     rows = []
     for name, (w, h, frames, fps) in meta.items():
         ident = var.get(name) or 'e' + ''.join(p.capitalize() for p in name[2:].split('_'))

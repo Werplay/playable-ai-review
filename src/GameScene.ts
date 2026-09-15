@@ -808,16 +808,13 @@ export class GameScene extends Phaser.Scene {
         return 1.9 - lvl * 0.15;
       }
       case 'lightning': {
-        const strikes = 1 + lvl;
+        // Lightning.cs: the cooldown fires a run of NumberOfProjectiles bolts - one per
+        // level - RateOfFire (0.2s) apart, each dropped on its own random target.
         const dmg = atk * (4 + lvl * 2.2);
-        for (let i = 0; i < strikes; i++) {
-          this.time.delayedCall(i * 110, () => {
+        for (let i = 0; i < lvl; i++) {
+          this.time.delayedCall(i * 200, () => {
             if (this.state === 'over') return;
-            const pick = Phaser.Utils.Array.GetRandom(
-              this.enemies.filter((e) => Phaser.Math.Distance.Between(e.spr.x, e.spr.y, this.player.x, this.player.y) < 420)
-            ) as Enemy | undefined;
-            if (!pick) return;
-            this.strike(pick.spr.x, pick.spr.y, dmg, 46 + lvl * 6);
+            this.strike(this.strikeTarget(), dmg);
           });
         }
         return 2.4 - lvl * 0.18;
@@ -851,20 +848,36 @@ export class GameScene extends Phaser.Scene {
     return p;
   }
 
-  /** Shockwave Strike: instant AoE flash. */
-  private strike(x: number, y: number, dmg: number, radius: number) {
-    const ring = this.add.circle(x, y, radius, 0x9adcff, 0.55).setDepth(DEPTH.fx);
-    ring.setStrokeStyle(6, 0xffffff, 0.9);
-    this.tweens.add({
-      targets: ring,
-      scale: 1.5,
-      alpha: 0,
-      duration: 240,
-      onComplete: () => ring.destroy()
+  /** Lightning.cs picks a random enemy and retries up to five times for one that is on
+   *  screen (Helper.IsPositionInView); with nothing alive it strikes a point near the
+   *  player instead - Random.insideUnitCircle * 10 units, ~75px at this art scale. */
+  private strikeTarget(): Phaser.Math.Vector2 {
+    const view = this.cameras.main.worldView;
+    let pick: Enemy | null = null;
+    for (let i = 0; i < 5 && this.enemies.length; i++) {
+      pick = Phaser.Utils.Array.GetRandom(this.enemies) as Enemy;
+      if (view.contains(pick.spr.x, pick.spr.y)) break;
+    }
+    if (pick) return new Phaser.Math.Vector2(pick.spr.x, pick.spr.y);
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * 75;
+    return new Phaser.Math.Vector2(this.player.x + Math.cos(a) * r, this.player.y + Math.sin(a) * r);
+  }
+
+  /** Shockwave Strike: the LightningAttack skeleton's `attack3`, baked to 5 cells, played
+   *  on the target and then faded the way its slot-colour timeline does (full until
+   *  0.1667s, gone by 0.6667s). The bolt hangs above the strike point, so the sprite is
+   *  anchored on the tip its cells were trimmed to, which sits 36% across the cell.
+   *  AreaOfEffect is 0 in ActiveSkillsData.csv - the bolt damages only what its own
+   *  CollisionRadius (0.3 units, ~4px here) covers, so in practice the target it chose. */
+  private strike(p: Phaser.Math.Vector2, dmg: number) {
+    const bolt = this.add.sprite(p.x, p.y, 'bolt').setDepth(DEPTH.fx).setOrigin(0.36, 1);
+    bolt.play('bolt').once('animationcomplete', () => {
+      this.tweens.add({ targets: bolt, alpha: 0, duration: 500, onComplete: () => bolt.destroy() });
     });
     for (const e of [...this.enemies]) {
-      if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, x, y) < radius + e.def.radius) {
-        this.hurtEnemy(e, dmg, x, y);
+      if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.x, p.y) < 4 + e.def.radius) {
+        this.hurtEnemy(e, dmg, p.x, p.y);
       }
     }
   }

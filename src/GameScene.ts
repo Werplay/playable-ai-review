@@ -24,8 +24,9 @@ import {
 import { Hud } from './Hud';
 
 /** Bubble diameter as a multiple of the plane's longer side. w_shield's circle only fills
- *  ~92% of its texture, so 1.24 here draws a ring about 15% wider than the plane. */
+ *  ~92% of its texture, so 1.24 draws a ring about 15% wider than the plane. */
 const SHIELD_FIT = 2.5;
+const ORIGIN = { dx: 0, dy: 0 };
 const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
 
 /** The Phaser Spine plugin ships no types; this is the slice of SpineGameObject used here. */
@@ -106,8 +107,8 @@ export class GameScene extends Phaser.Scene {
 
   private enemies: Enemy[] = [];
   private projs: Proj[] = [];
-  /** scratch box for planeBox() - the shield asks for it every frame */
-  private tmpBox = { x: 0, y: 0, size: 0 };
+  /** the plane art's offset from the plane's position and its size, in world px */
+  private plane = { dx: 0, dy: 0, size: 0 };
   private pickups: Pickup[] = [];
   private enemyId = 0;
 
@@ -397,6 +398,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.elapsed += dt;
+    this.measurePlane();
     this.updatePlayer(dt);
     this.updateSpawner(dt);
     this.updateEnemies(dt);
@@ -867,36 +869,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Where the plane art actually is, in world px: its centre, and the longer side of the
-   *  box around it. The art hangs well above the skeleton's origin and swings around that
-   *  origin as the plane turns, so anything that wraps the plane is placed from here rather
-   *  than from `player.x/y`.
+  /** Measures where the plane art sits relative to the plane's position, in world px, plus
+   *  the longer side of the box around it. The art hangs well above the skeleton's origin
+   *  and swings around it as the plane turns, so anything that wraps the plane is placed
+   *  from here rather than from `player.x/y`.
    *
-   *  updatePlayer() writes x, y, rotation and scaleY every frame and each of those setters
-   *  re-poses the skeleton, so what sits in it during update() is the plugin's `refresh()`
-   *  pose: parked at the game object's position with y running upward and the game object's
-   *  signed scale on the bones. That pose is what the bounds describe. It matches what gets
-   *  drawn except in one case - a left-facing plane is mirrored at render time by spinning
-   *  the root bone through twice the heading, which `refresh()` does not do - so that spin
-   *  is applied here instead. (The canvas fallback mirrors on a different axis again; the
-   *  bubble lands close enough there, and no ad network ships without WebGL.) */
-  private planeBox(out: { x: number; y: number; size: number }) {
+   *  Only ever call this at the top of update(): the renderer poses the skeleton itself -
+   *  parking it at the drawn position, and mirroring a left-facing plane by spinning the
+   *  root bone - so between the last render and updatePlayer()'s first setter is the one
+   *  moment its bounds describe what is actually on screen. Every x/y/rotation/scaleY write
+   *  re-poses it through the plugin's refresh(), which skips that mirror. */
+  private measurePlane() {
     const sk = this.player.skeleton;
     const b = this.player.getBounds();
-    let dx = b.offset.x + b.size.x / 2 - sk.x;
-    let dy = b.offset.y + b.size.y / 2 - sk.y;
-    if (this.player.scaleY < 0) {
-      const a = 2 * this.player.rotation;
-      const c = Math.cos(a);
-      const s = Math.sin(a);
-      [dx, dy] = [dx * c - dy * s, dx * s + dy * c];
-    }
-    // an unposed skeleton reports an empty box; never fling the bubble off the plane
-    const ok = b.size.x > 0 && Math.hypot(dx, dy) < 200;
-    out.x = this.player.x + (ok ? dx : 0);
-    out.y = this.player.y - (ok ? dy : 0);
-    out.size = ok ? Math.max(b.size.x, b.size.y) : 80;
-    return out;
+    if (!(b.size.x > 0)) return;
+    const dx = b.offset.x + b.size.x / 2 - sk.x;
+    // the WebGL renderer parks the skeleton on a y-up axis, the canvas one on an inverted scaleY
+    const dy = (b.offset.y + b.size.y / 2 - sk.y) * (this.game.renderer.type === Phaser.CANVAS ? 1 : -1);
+    // never fling the bubble off the plane if the plugin hands back something odd
+    if (Math.hypot(dx, dy) > 200) return;
+    this.plane.dx = dx;
+    this.plane.dy = dy;
+    this.plane.size = Math.max(b.size.x, b.size.y);
   }
 
   /** (Re)build the orbiting weapons so their count/radius match the current level. */
@@ -917,7 +911,7 @@ export class GameScene extends Phaser.Scene {
         .setDepth(DEPTH.proj - 1)
         .setScale(0.75);
       if (id === 'shield') {
-        const d = this.planeBox(this.tmpBox).size * SHIELD_FIT * (1 + (lvl - 1) * 0.15);
+        const d = (this.plane.size || 80) * SHIELD_FIT * (1 + (lvl - 1) * 0.15);
         spr.setDisplaySize(d, d).setAlpha(0.85);
       }
       this.projs.push({
@@ -948,10 +942,10 @@ export class GameScene extends Phaser.Scene {
         const isShield = p.spr.texture.key === 'w_shield';
         const lvl = this.lvlOf(isShield ? 'shield' : 'propeller');
         p.orbitAngle! += p.orbitSpeed! * dt;
-        // the bubble wraps the art, which swings around the origin as the plane turns
-        const c = isShield ? this.planeBox(this.tmpBox) : this.player;
-        p.spr.x = c.x + Math.cos(p.orbitAngle!) * p.orbitRadius!;
-        p.spr.y = c.y + Math.sin(p.orbitAngle!) * p.orbitRadius!;
+        // the bubble wraps the art, which swings around the plane's position as it turns
+        const off = isShield ? this.plane : ORIGIN;
+        p.spr.x = this.player.x + off.dx + Math.cos(p.orbitAngle!) * p.orbitRadius!;
+        p.spr.y = this.player.y + off.dy + Math.sin(p.orbitAngle!) * p.orbitRadius!;
         p.spr.rotation += p.spin * dt;
         p.dmg = atk * (isShield ? 1.2 + lvl * 0.8 : 2 + lvl * 1.2);
       } else {

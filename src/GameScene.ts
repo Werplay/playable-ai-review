@@ -872,6 +872,10 @@ export class GameScene extends Phaser.Scene {
    *  CollisionRadius (0.3 units, ~4px here) covers, so in practice the target it chose. */
   private strike(p: Phaser.Math.Vector2, dmg: number) {
     const bolt = this.add.sprite(p.x, p.y, 'bolt').setDepth(DEPTH.fx).setOrigin(0.36, 1);
+    // it comes out of the sky: however far the target sits below the top of the screen is
+    // how long the bolt has to be, plus enough to start off-screen. Width is its own knob -
+    // stretching a jagged streak lengthwise reads as lightning, scaling it does not.
+    bolt.setScale(1.6, (p.y - this.cameras.main.worldView.top + 90) / bolt.height);
     bolt.play('bolt').once('animationcomplete', () => {
       this.tweens.add({ targets: bolt, alpha: 0, duration: 500, onComplete: () => bolt.destroy() });
     });

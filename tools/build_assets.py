@@ -143,8 +143,11 @@ BOLT_W = 56  # the skeleton's own 782 units at the px-per-unit the enemies are b
 bolt, bw, bh = spinestrip.strip(LI + 'LightningAttack.json', LI + 'LightningAttack.atlas.txt',
                                 'attack3', 25, BOLT_W)  # 25 = duration x 30: cells land on the grid
 bolt = bolt.crop((0, 0, 5 * bw, bh))
-# trim to the bolt itself, bottom edge on the strike point so the sprite anchors there
-tip = bolt.crop((4 * bw, 0, 5 * bw, bh)).getchannel('A').point(lambda a: 255 if a > 10 else 0)
+# Trim to the bolt itself, bottom edge on the strike point so the sprite anchors there.
+# The cut is at the last bright row of the last frame, not the last row with any alpha:
+# the bolt ends in 50px of near-transparent taper that stretches into a visible gap
+# between the bolt and what it hit once GameScene scales it up to reach off-screen.
+tip = bolt.crop((4 * bw, 0, 5 * bw, bh)).getchannel('A').point(lambda a: 255 if a > 120 else 0)
 bolt = bolt.crop((0, bolt.getbbox()[1], 5 * bw, tip.getbbox()[3]))
 put(bolt, 'bolt.png', 48)
 frames_meta['bolt'] = (bw, bolt.height, 5, 30.0)

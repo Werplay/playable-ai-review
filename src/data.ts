@@ -109,7 +109,7 @@ export const SHEETS: Record<string, Sheet> = {
   e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 },
   boom: { url: boom, frameWidth: 80, frameHeight: 65, frames: 16, fps: 30.0 },
   hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 },
-  bolt: { url: bolt, frameWidth: 56, frameHeight: 229, frames: 5, fps: 30.0 }
+  bolt: { url: bolt, frameWidth: 56, frameHeight: 183, frames: 5, fps: 30.0 }
 };
 
 /** SFX from the Unity project's Assets/Audios/SFX, baked by tools/build_assets.py.

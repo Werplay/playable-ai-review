@@ -19,6 +19,7 @@ import eHammerhead from 'assets/e_hammerhead.png';
 import eBoss from 'assets/e_boss.png';
 import hit from 'assets/hit.png';
 import boom from 'assets/boom.png';
+import bolt from 'assets/bolt.png';
 
 import sky from 'assets/sky.png';
 import clouds1 from 'assets/clouds1.png';
@@ -107,7 +108,8 @@ export const SHEETS: Record<string, Sheet> = {
   e_ladybug: { url: eLadybug, frameWidth: 36, frameHeight: 38, frames: 30, fps: 30.0 },
   e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 },
   boom: { url: boom, frameWidth: 80, frameHeight: 65, frames: 16, fps: 30.0 },
-  hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 }
+  hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 },
+  bolt: { url: bolt, frameWidth: 56, frameHeight: 229, frames: 5, fps: 30.0 }
 };
 
 /** SFX from the Unity project's Assets/Audios/SFX, baked by tools/build_assets.py.

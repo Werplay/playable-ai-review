@@ -26,6 +26,14 @@ import boom from 'assets/boom.png';
 import sky from 'assets/sky.png';
 import clouds1 from 'assets/clouds1.png';
 import clouds2 from 'assets/clouds2.png';
+import water from 'assets/water.png';
+import rock1 from 'assets/rock1.png';
+import rock2 from 'assets/rock2.png';
+import rock3 from 'assets/rock3.png';
+import rockFar1 from 'assets/rock_far1.png';
+import rockFar2 from 'assets/rock_far2.png';
+import horizon from 'assets/horizon.png';
+import foam from 'assets/foam.png';
 import appicon from 'assets/appicon.png';
 
 import gemGreen from 'assets/gem_green.png';
@@ -134,6 +142,54 @@ export const CAM = {
   pxPerUnit: 29.69
 };
 
+/** The sea under the arena and the rocks standing in it.
+ *
+ *  The survival map runs the AtlantisDay set (BGCollectionRevamped/BG_AtlantisDay.asset):
+ *  a blue water plane and four layers of sandstone stacks, each layer with its own count,
+ *  scale range, spread and depth. BackgroundController puts the surface at `waterTopY`
+ *  (-3.8 in GameplayScene) and the rocks below it, so what stands above the waterline is
+ *  their upper half; the water plane is drawn nearer than any of them, which is what cuts
+ *  them off at the surface.
+ *
+ *  The game's camera is perspective, so depth does the parallax and the shrinking for it:
+ *  a layer at z draws at 28/(28+z) of the movement and the size of the arena plane, the
+ *  arena being z=0 and the camera 28 back. The water sits at z=-3, in front of the rocks.
+ *
+ *  `floor` is where the plane stops: StageManager.SetStageBoundaries(Endless) fixes
+ *  LOWERBOUNDARY at -4, half a plane above the water. `camFloor` is the camera's own,
+ *  which the same method sets 15 units lower (`SetCameraBoundaries(-19, ...)`) - that
+ *  gap is why the sea fills the bottom of the screen instead of a sliver. */
+export const BG = {
+  waterY: -3.8,
+  floor: -4,
+  camFloor: -19,
+  /** the water plane's own depth, z = -3 (BackgroundController.CreateWaterTop) */
+  waterK: 28 / (28 - 3),
+  /** and its height: WaterTopPrefabNew scales the 0.32-unit sprite by 75.12 */
+  waterH: 24.04,
+  /** HorizonPrefabNew: the 0.21-unit white band scaled 5x, at 69% alpha */
+  horizonH: 1.05,
+  /** the surf laid along the surface, kept to the band the recording shows */
+  foamH: 0.8,
+  /** distance the camera sits behind the arena plane, which sets every `k` */
+  camZ: 28,
+  /** each rock's width in world units - its png at Unity's 100 pixels per unit */
+  rockW: { rock1: 12.17, rock2: 6.3, rock3: 8.33, rock_far1: 6.03, rock_far2: 4.55 },
+  /** BG_AtlantisDay.asset propsLayer1..4, nearest first. SetPropInLayer draws each rock's
+   *  own z out of the layer's range and its own scale out of `scale` + up to `grow` on
+   *  top (layer 1 grows by twice its own scale, the rest by a flat 2), then mirrors half
+   *  of them - so a layer is a spread of sizes and depths, not one repeated cutout.
+   *
+   *  The two far layers run the same back rocks the game's own bgRock silhouettes are a
+   *  washed-out copy of, so they are drawn through a haze alpha instead. */
+  layers: [
+    { y: -4.9, scale: 0.65, grow: 1.3, count: 13, spread: 48.54, zMin: 3.88, zMax: 7.77, alpha: 1, tex: ['rock1', 'rock2', 'rock3'] },
+    { y: -5.5, scale: 1, grow: 2, count: 4, spread: 48.54, zMin: 10, zMax: 18, alpha: 1, tex: ['rock1', 'rock2', 'rock3'] },
+    { y: -6.5, scale: 2, grow: 2, count: 7, spread: 72.82, zMin: 20, zMax: 24, alpha: 0.85, tex: ['rock_far1', 'rock_far2'] },
+    { y: -9.5, scale: 3.5, grow: 2, count: 7, spread: 72.81, zMin: 25, zMax: 28, alpha: 0.45, tex: ['rock_far1', 'rock_far2'] }
+  ]
+};
+
 /** Character art is baked out of the Spine skeletons as horizontal strips playing
  *  `idle`, each at its own skeleton's rate. */
 export interface Sheet {
@@ -183,6 +239,14 @@ export const IMAGES: Record<string, string> = {
   sky,
   clouds1,
   clouds2,
+  water,
+  rock1,
+  rock2,
+  rock3,
+  rock_far1: rockFar1,
+  rock_far2: rockFar2,
+  horizon,
+  foam,
   appicon,
   gem_green: gemGreen,
   gem_blue: gemBlue,

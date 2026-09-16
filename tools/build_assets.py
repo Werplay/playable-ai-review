@@ -132,26 +132,6 @@ put(strip, 'hit.png', 48)
 frames_meta['hit'] = (HIT_W, strip.height, len(cells), 30.0)
 
 
-# ---- Shockwave Strike bolt ----------------------------------------------
-# Lightning.cs drops a pooled LightningAttack skeleton playing "attack3" on the target.
-# The bolt's shape is a 5-frame attachment timeline (captain/Frame 1..5 on the 30fps
-# grid); everything past 0.1667s holds that last frame and fades through a slot-colour
-# timeline, which the strip baker does not read - GameScene tweens the fade instead.
-# So only those 5 cells are baked: the rest of the 0.83s would be 20 identical frames.
-LI = U + '/Scripts/Skills/Actives/WeaponScripts/Lightning/'
-BOLT_W = 56  # the skeleton's own 782 units at the px-per-unit the enemies are baked at
-bolt, bw, bh = spinestrip.strip(LI + 'LightningAttack.json', LI + 'LightningAttack.atlas.txt',
-                                'attack3', 25, BOLT_W)  # 25 = duration x 30: cells land on the grid
-bolt = bolt.crop((0, 0, 5 * bw, bh))
-# Trim to the bolt itself, bottom edge on the strike point so the sprite anchors there.
-# The cut is at the last bright row of the last frame, not the last row with any alpha:
-# the bolt ends in 50px of near-transparent taper that stretches into a visible gap
-# between the bolt and what it hit once GameScene scales it up to reach off-screen.
-tip = bolt.crop((4 * bw, 0, 5 * bw, bh)).getchannel('A').point(lambda a: 255 if a > 120 else 0)
-bolt = bolt.crop((0, bolt.getbbox()[1], 5 * bw, tip.getbbox()[3]))
-put(bolt, 'bolt.png', 48)
-frames_meta['bolt'] = (bw, bolt.height, 5, 30.0)
-
 
 # ---- sfx ----------------------------------------------------------------
 # Assets/Audios/SFX in the Unity project is Git LFS; run `git lfs pull` there first or
@@ -243,7 +223,7 @@ def write_sheet_table(meta):
     src = open(ts, encoding='utf-8').read()
     start = src.index('export const SHEETS: Record<string, Sheet> = {')
     end = src.index('};', start) + 2
-    var = {'player': 'player', 'hit': 'hit', 'boom': 'boom', 'bolt': 'bolt'}
+    var = {'player': 'player', 'hit': 'hit', 'boom': 'boom'}
     rows = []
     for name, (w, h, frames, fps) in meta.items():
         ident = var.get(name) or 'e' + ''.join(p.capitalize() for p in name[2:].split('_'))

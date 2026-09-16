@@ -107,6 +107,33 @@ export const BOLT = {
   reach: 2867
 };
 
+/** The Survival camera, measured off the Unity project rather than eyeballed.
+ *
+ *  It is a perspective camera with a 60 degree vertical FOV (GameplayScene.unity, the
+ *  scene that carries InGameXpHandler) and CameraMovement parks it behind the plane at
+ *  the distance StageManager.Initialize asks for - `SetCamZoom(28, 1.5f)`. That is
+ *  2 x 28 x tan(30) = 32.3 world units of height, whatever the aspect: the FOV is
+ *  vertical, so a narrower screen shows less width, never less height. Stage1.csv walks
+ *  the distance back to 32 / 34 / 36 / 38 as the waves thicken (at 60 / 120 / 210 / 350
+ *  seconds), which a 95 second run never reaches.
+ *
+ *  `pxPerUnit` puts that in this game's pixels. The plane's skeleton is 644.8 units
+ *  across; Unity draws it at the SkeletonDataAsset's 0.01 scale under the Player
+ *  prefab's own 0.35, so it is 2.257 world units wide, and build_spine.py bakes it to
+ *  67px. Everything else follows from those two numbers, so the camera holds its field
+ *  of view on any canvas the ad lands in.
+ *
+ *  Not matched: the art's own proportions. Unity's enemy planes run at Scale 0.28-0.6
+ *  (Resources/CSV/StageData/Stage*.csv) - the same 2.2 units as the player - where the
+ *  playable bakes them at two thirds of the plane, and gems at 26px against the 19px
+ *  their 0.65 units would give. That is a re-bake of every strip, not a camera setting. */
+export const CAM = {
+  /** world units of height the camera shows - 2 x 28 x tan(FOV/2) */
+  units: 32.33,
+  /** 67px of baked plane / 2.2568 world units */
+  pxPerUnit: 29.69
+};
+
 /** Character art is baked out of the Spine skeletons as horizontal strips playing
  *  `idle`, each at its own skeleton's rate. */
 export interface Sheet {

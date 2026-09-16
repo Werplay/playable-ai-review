@@ -25,6 +25,7 @@ at 1:18. Win or die, the end card offers the store link.
 | Base ATK 10 / HP 100 | `Assets/Scripts/Player/PlayerStats.cs`, `Resources/CSV/SurvivorData/SurvivorLevelUpData.csv` |
 | Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
 | Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
+| Camera field of view and follow | `Assets/Scenes/GameplayScene.unity` (perspective, 60° vertical FOV), `Assets/Scripts/Stage/StageManager.cs` (`SetCamZoom(28, 1.5f)` = 32.3 world units of height), `Assets/Scripts/Camera/CameraMovement.cs` (locked to the plane, not trailing) |
 | Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, baked to animated sprite strips |
 | Shockwave Strike (bolt, targeting, cadence) | `Assets/Scripts/Skills/Actives/WeaponScripts/Lightning/` — `Lightning.cs` and the `LightningAttack` skeleton, plus `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Lightning1..5` |
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |

@@ -17,6 +17,7 @@ import {
   SPINE,
   BOLT,
   CAM,
+  BG,
   SKILL_BY_ID,
   SkillDef,
   WAVES,
@@ -30,6 +31,10 @@ import { Hud } from './Hud';
 const SHIELD_FIT = 2.8;
 const ORIGIN = { dx: 0, dy: 0 };
 const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
+
+/** Unity's y axis points up and its unit is CAM.pxPerUnit of this game's pixels. */
+const worldY = (unity: number) => -unity * CAM.pxPerUnit;
+const FLOOR = worldY(BG.floor);
 
 /** The Phaser Spine plugin ships no types; this is the slice of SpineGameObject used here. */
 interface SpineObject extends Phaser.GameObjects.GameObject {
@@ -104,6 +109,11 @@ export class GameScene extends Phaser.Scene {
   // world
   private player!: SpineObject;
   private sky!: Phaser.GameObjects.Image;
+  private sea!: Phaser.GameObjects.Image;
+  private haze!: Phaser.GameObjects.Image;
+  private surf!: Phaser.GameObjects.TileSprite;
+  /** one sprite per rock in BG.layers, with the arena-plane x it parallaxes from */
+  private rocks: { img: Phaser.GameObjects.Image; x: number; sink: number; k: number; span: number }[] = [];
   private cloudsFar!: Phaser.GameObjects.TileSprite;
   private cloudsNear!: Phaser.GameObjects.TileSprite;
 
@@ -260,6 +270,8 @@ export class GameScene extends Phaser.Scene {
       .setTileScale(0.7)
       .setDepth(DEPTH.bg + 2);
 
+    this.buildSea();
+
     this.createAnims();
     // Spine's canvas renderer drops every mesh attachment unless triangle rendering is
     // switched on - on a device with no WebGL the plane would otherwise fly as a head and
@@ -274,6 +286,11 @@ export class GameScene extends Phaser.Scene {
     // past 1 on any frame the game actually renders: the survival camera is locked to
     // the plane, not trailing it.
     cam.startFollow(this.player, false, 1, 1);
+    // CheckBoundaries clamps the camera so its bottom edge stops at the camera floor -
+    // the arena is otherwise open, so the other three sides are set far enough away to
+    // never bite.
+    const far = 1e6;
+    cam.setBounds(-far, -far, far * 2, far + worldY(BG.camFloor));
     cam.setBackgroundColor('#57bdf9');
 
     // virtual joystick — appears wherever the finger lands
@@ -433,6 +450,43 @@ export class GameScene extends Phaser.Scene {
     o.setPosition(px, py).setScale(1 / this.cameras.main.zoom);
   }
 
+  /** The Day background's sea and islands. Both are drawn straight into the arena at
+   *  the position their depth projects them to, rather than through scrollFactor, so the
+   *  perspective the game gets for free stays in one readable place: drawBackground. */
+  private buildSea() {
+    // Above the cloud layers: those are a screen-wide wash rather than the game's own
+    // scattered cloud props, and hanging them in the water reads as fog on the sea.
+    this.sea = this.add.image(0, 0, 'water').setOrigin(0.5, 0).setDepth(DEPTH.bg + 3);
+    this.haze = this.add.image(0, 0, 'horizon').setOrigin(0.5, 0).setAlpha(0.69).setDepth(DEPTH.bg + 3.1);
+    this.surf = this.add.tileSprite(0, 0, 10, 10, 'foam').setOrigin(0.5, 0.5).setDepth(DEPTH.bg + 3.2);
+    BG.layers.forEach((layer, i) => {
+      for (let n = 0; n < layer.count; n++) {
+        const key = layer.tex[n % layer.tex.length];
+        const img = this.add
+          .image(0, 0, key)
+          .setDepth(DEPTH.bg + 2.9 - i * 0.05)
+          .setAlpha(layer.alpha)
+          .setFlipX(Math.random() > 0.5);
+        const z = Phaser.Math.FloatBetween(layer.zMin, layer.zMax);
+        const k = BG.camZ / (BG.camZ + z);
+        const scale = layer.scale + Math.random() * layer.grow;
+        // the baked rock is one png standing rockW units wide in the game
+        img.setScale(((BG.rockW as Record<string, number>)[key] * CAM.pxPerUnit * scale * k) / img.width);
+        // spread along the layer, then jitter so the layers do not line up in columns
+        const step = (layer.spread * 2) / layer.count;
+        const x = (-layer.spread + (n + 0.5) * step + Phaser.Math.FloatBetween(-0.4, 0.4) * step) * CAM.pxPerUnit;
+        // How deep this one stands in the water, measured from its own base rather than
+        // from the layer's y: the layers sit 1 to 6 units under the surface, which on
+        // screen buries everything but the peaks. Wading them instead keeps each rock on
+        // the sealine the way the game draws it, and scaling the depth by k leaves the
+        // near ones sitting lower than the far ones. The spread is per rock, so the
+        // shoreline is ragged rather than a ruled line.
+        const sink = (6 + Math.random() * 12) * k;
+        this.rocks.push({ img, x, sink, k, span: layer.spread * 2 * CAM.pxPerUnit * k });
+      }
+    });
+  }
+
   private drawBackground() {
     const cam = this.cameras.main;
     // the backdrop is pinned too, so it has to be drawn zoom-times larger to still fill
@@ -446,6 +500,33 @@ export class GameScene extends Phaser.Scene {
       layer.setPosition(cam.width / 2, cam.height / 2).setSize(w, h);
       layer.tilePositionX = cam.scrollX * f;
       layer.tilePositionY = cam.scrollY * f;
+    }
+
+    // Everything below parallaxes about the camera's own centre: a thing at depth k
+    // moves and measures k times what the arena plane does.
+    const view = cam.worldView;
+    const cx = view.centerX;
+    const cy = view.centerY;
+
+    const horizon = cy + (worldY(BG.waterY) - cy) * BG.waterK;
+    // Nothing here is switched off when it leaves the screen: the sea and its rocks are
+    // placed off the waterline, so when the plane climbs away they slide out of view on
+    // their own rather than popping.
+    const deep = Math.max(BG.waterH * CAM.pxPerUnit, view.bottom - horizon);
+    this.sea.setPosition(cx, horizon).setDisplaySize(view.width, deep);
+    this.haze.setPosition(cx, horizon).setDisplaySize(view.width, BG.horizonH * CAM.pxPerUnit);
+    const foamH = BG.foamH * CAM.pxPerUnit;
+    this.surf.setPosition(cx, horizon + foamH * 0.35).setSize(view.width, foamH);
+    this.surf.setTileScale(foamH / this.surf.texture.getSourceImage().height);
+    this.surf.tilePositionX = cam.scrollX * BG.waterK;
+
+    // Rocks stand on the sealine rather than hanging off the camera: their own depth
+    // still sets how far they drift sideways and how big they are, but a flat quad per
+    // layer either buries them (the layers are metres under the surface) or slides out
+    // from behind the sea as the plane climbs and leaves a stack standing in open sky.
+    for (const { img, x, sink, k, span } of this.rocks) {
+      const px = Phaser.Math.Wrap(cx + (x - cx) * k, cx - span / 2, cx + span / 2);
+      img.setPosition(px, horizon + sink - img.displayHeight / 2);
     }
   }
 
@@ -467,6 +548,12 @@ export class GameScene extends Phaser.Scene {
     this.player.scaleY = Math.abs(this.player.rotation) > Math.PI / 2 ? -PLANE_SCALE : PLANE_SCALE;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) this.player.play('flying1', true);
     this.player.y += Math.sin(this.elapsed * 3) * 0.25;
+    // The sea is the floor, exactly as it is in the stage: Endless pins LOWERBOUNDARY
+    // half a plane above the waterline and the plane skims along it.
+    if (this.player.y > FLOOR) {
+      this.player.y = FLOOR;
+      this.vel.y = Math.min(this.vel.y, 0);
+    }
 
     this.hurtCd = Math.max(0, this.hurtCd - dt);
     const regenLvl = this.lvlOf('health');
@@ -513,8 +600,12 @@ export class GameScene extends Phaser.Scene {
     const dist = Math.hypot(cam.width, cam.height) / (2 * cam.zoom) + 30;
     const heading = this.vel.lengthSq() > 900 ? Math.atan2(this.vel.y, this.vel.x) : Math.random() * Math.PI * 2;
     const a = Math.random() < 0.8 ? heading + Phaser.Math.FloatBetween(-1.1, 1.1) : Math.random() * Math.PI * 2;
+    const sx = this.player.x + Math.cos(a) * dist;
+    // nothing flies out of the sea: the arc of the ring below it folds back over
+    let sy = this.player.y + Math.sin(a) * dist;
+    if (sy > FLOOR) sy = 2 * FLOOR - sy;
     const spr = this.add
-      .sprite(this.player.x + Math.cos(a) * dist, this.player.y + Math.sin(a) * dist, def.key)
+      .sprite(sx, sy, def.key)
       .setDepth(DEPTH.enemy)
       .setScale(def.scale);
     // stagger the loop so a wave doesn't flap in lockstep
@@ -549,7 +640,7 @@ export class GameScene extends Phaser.Scene {
       e.knockX *= 0.86;
       e.knockY *= 0.86;
       e.spr.x += (dx / d) * e.def.speed * dt + e.knockX * dt;
-      e.spr.y += (dy / d) * e.def.speed * dt + e.knockY * dt;
+      e.spr.y = Math.min(e.spr.y + (dy / d) * e.def.speed * dt + e.knockY * dt, FLOOR);
       e.spr.setFlipX(dx < 0);
       e.spr.setRotation(Phaser.Math.Clamp(dy / d, -0.5, 0.5) * (dx < 0 ? -0.35 : 0.35));
 

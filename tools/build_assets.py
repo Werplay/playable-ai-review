@@ -209,6 +209,25 @@ BGP = U + '/BG/BGDataNew/BGAssets/BGDay/SpriteSheet/BG_Day_SpriteSheet.png'
 put(tp(BGP, 1912, 1059, 508, 25, 56).resize((8, 512), Image.LANCZOS), 'sky.png', 0)
 flat('/BG/BGDataOld/OtheBackgrounds/BG- Misc/clouds1.png', 'clouds1.png', 560, 32)
 flat('/BG/BGDataOld/OtheBackgrounds/BG- Misc/clouds3.png', 'clouds2.png', 560, 32)
+
+# ---- sea and rocks ------------------------------------------------------
+# The survival map is the AtlantisDay set (BG_AtlantisDay.asset): a blue water plane and
+# four parallax layers of sandstone stacks standing in it. waterADay.png is a 48x32
+# vertical gradient the game stretches over the whole sea, so it ships as a column the
+# way the sky does; the rocks are drawn at the size their nearest layer needs and scaled
+# down for the rest. The far layers reuse the back rocks under a haze alpha rather than
+# shipping the three bgRock silhouettes, which are the same shapes washed out.
+A10 = '/BG/BGDataOld/OtheBackgrounds/BG10 - AtlantisDay/'
+put(Image.open(U + A10 + 'waterADay.png').convert('RGBA').resize((8, 256), Image.LANCZOS), 'water.png', 0)
+for src, name, w in [('Rocks1', 'rock1', 384), ('Rocks3', 'rock2', 300), ('Rocks4', 'rock3', 340),
+                     ('BackRocks1', 'rock_far1', 300), ('BackRocks2', 'rock_far2', 260)]:
+    flat(A10 + 'Explottens_AboveWater_%s.png' % src, name + '.png', w, 32)
+# The waterline itself: HorizonPrefabNew's white band, which the game hangs on the water
+# at 69% alpha, and a tiling strip of surf (the foam the wave generators lay along the
+# surface - this is the game's own seamless foam art, from the waterfall set).
+flat('/BG/BGDataOld/OtheBackgrounds/BG- Misc/horizon.png', 'horizon.png', 217, 0)
+flat('/BG/BGDataNew/BGAssets/BGWaterFall/WaterfallBackground/Assets/Foam_BaseComplete.png', 'foam.png', 512, 32)
+
 put(Image.open(U + '/iTunesArtwork@2x.png').convert('RGBA').resize((140, 140), Image.LANCZOS), 'appicon.png', 96)
 
 for stale in ('coin.png', 'magnet.png', 'chest.png'):

@@ -15,6 +15,7 @@ import {
   SKILLS,
   SHEETS,
   SPINE,
+  BOLT,
   SKILL_BY_ID,
   SkillDef,
   WAVES,
@@ -161,7 +162,8 @@ export class GameScene extends Phaser.Scene {
         frameHeight: sheet.frameHeight
       });
     }
-    this.loadPlayerSpine();
+    this.loadSpine(SPINE);
+    this.loadSpine(BOLT);
   }
 
   /** Decode the SFX straight into the audio cache instead of going through `load.audio`.
@@ -198,12 +200,12 @@ export class GameScene extends Phaser.Scene {
    *  whole queue on the atlas page and the scene never reaches create(). The plugin only
    *  reads three things back out of the caches, so they go in directly; the page image
    *  goes through Phaser's own loader, which handles data URLs fine. */
-  private loadPlayerSpine() {
-    this.load.image(`${SPINE.key}:${SPINE.page}`, SPINE.png);
-    this.cache.json.add(SPINE.key, JSON.parse(SPINE.json));
-    (this.cache as any).custom.spine.add(SPINE.key, {
+  private loadSpine(s: { key: string; page: string; png: string; json: string; atlas: string }) {
+    this.load.image(`${s.key}:${s.page}`, s.png);
+    this.cache.json.add(s.key, JSON.parse(s.json));
+    (this.cache as any).custom.spine.add(s.key, {
       preMultipliedAlpha: false,
-      data: atob(SPINE.atlas.slice(SPINE.atlas.indexOf(',') + 1)),
+      data: atob(s.atlas.slice(s.atlas.indexOf(',') + 1)),
       prefix: ''
     });
   }
@@ -848,37 +850,40 @@ export class GameScene extends Phaser.Scene {
     return p;
   }
 
-  /** Lightning.cs picks a random enemy and retries up to five times for one that is on
-   *  screen (Helper.IsPositionInView); with nothing alive it strikes a point near the
-   *  player instead - Random.insideUnitCircle * 10 units, ~75px at this art scale. */
+  /** Where the next bolt lands: a random one of the three enemies closest to the player
+   *  that are on screen. Lightning.cs rolls the whole enemy pool and only retries for a
+   *  position in view, which on a screen-sized arena scatters bolts onto whatever is
+   *  drifting in at the edges; keeping to the nearest few puts them on the planes
+   *  actually closing in, and picking among three rather than always the nearest spreads
+   *  a five-bolt volley instead of emptying it into one target.
+   *
+   *  With nothing on screen it falls back the way Lightning.cs does - the nearest enemy
+   *  anywhere, or a point near the player (Random.insideUnitCircle * 10, ~75px here). */
   private strikeTarget(): Phaser.Math.Vector2 {
     const view = this.cameras.main.worldView;
-    let pick: Enemy | null = null;
-    for (let i = 0; i < 5 && this.enemies.length; i++) {
-      pick = Phaser.Utils.Array.GetRandom(this.enemies) as Enemy;
-      if (view.contains(pick.spr.x, pick.spr.y)) break;
-    }
+    const range = (e: Enemy) => Phaser.Math.Distance.Squared(e.spr.x, e.spr.y, this.player.x, this.player.y);
+    const near = this.enemies.filter((e) => view.contains(e.spr.x, e.spr.y)).sort((a, b) => range(a) - range(b));
+    const pick = (Phaser.Utils.Array.GetRandom(near.slice(0, 3)) as Enemy | undefined) || this.nearestEnemy();
     if (pick) return new Phaser.Math.Vector2(pick.spr.x, pick.spr.y);
     const a = Math.random() * Math.PI * 2;
     const r = Math.random() * 75;
     return new Phaser.Math.Vector2(this.player.x + Math.cos(a) * r, this.player.y + Math.sin(a) * r);
   }
 
-  /** Shockwave Strike: the LightningAttack skeleton's `attack3`, baked to 5 cells, played
-   *  on the target and then faded the way its slot-colour timeline does (full until
-   *  0.1667s, gone by 0.6667s). The bolt hangs above the strike point, so the sprite is
-   *  anchored on the tip its cells were trimmed to, which sits 36% across the cell.
+  /** Shockwave Strike: the LightningAttack skeleton playing `attack3` on the target,
+   *  the way Lightning.cs drops its pooled effect there. The skeleton fades itself out
+   *  through the animation's slot-colour keys, so nothing here has to tween it.
+   *
+   *  It has to come in from off the top of the screen, so it is scaled to whatever that
+   *  takes - evenly, since squeezing the width flattens the jitter into a plain streak.
+   *
    *  AreaOfEffect is 0 in ActiveSkillsData.csv - the bolt damages only what its own
    *  CollisionRadius (0.3 units, ~4px here) covers, so in practice the target it chose. */
   private strike(p: Phaser.Math.Vector2, dmg: number) {
-    const bolt = this.add.sprite(p.x, p.y, 'bolt').setDepth(DEPTH.fx).setOrigin(0.36, 1);
-    // it comes out of the sky: however far the target sits below the top of the screen is
-    // how long the bolt has to be, plus enough to start off-screen. Width is its own knob -
-    // stretching a jagged streak lengthwise reads as lightning, scaling it does not.
-    bolt.setScale(1.6, (p.y - this.cameras.main.worldView.top + 90) / bolt.height);
-    bolt.play('bolt').once('animationcomplete', () => {
-      this.tweens.add({ targets: bolt, alpha: 0, duration: 500, onComplete: () => bolt.destroy() });
-    });
+    const bolt = (this.add as any).spine(p.x, p.y, BOLT.key, BOLT.anim, false) as SpineObject;
+    const reach = (p.y - this.cameras.main.worldView.top + 90) / BOLT.reach;
+    bolt.setDepth(DEPTH.fx).setScale(reach);
+    this.time.delayedCall(BOLT.duration * 1000, () => bolt.destroy());
     for (const e of [...this.enemies]) {
       if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.x, p.y) < 4 + e.def.radius) {
         this.hurtEnemy(e, dmg, p.x, p.y);

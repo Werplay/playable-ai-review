@@ -8,6 +8,9 @@ import fontUrl from 'assets/LuckiestGuy-Regular.woff2';
 import spinePng from 'assets/spine_player.png';
 import spineAtlas from 'assets/spine_player.atlas';
 import spineJson from 'assets/spine_player.json';
+import boltPng from 'assets/spine_bolt.png';
+import boltAtlas from 'assets/spine_bolt.atlas';
+import boltJson from 'assets/spine_bolt.json';
 import eFurry from 'assets/e_furry.png';
 import eFeline from 'assets/e_feline.png';
 import eSpeedbug from 'assets/e_speedbug.png';
@@ -19,7 +22,6 @@ import eHammerhead from 'assets/e_hammerhead.png';
 import eBoss from 'assets/e_boss.png';
 import hit from 'assets/hit.png';
 import boom from 'assets/boom.png';
-import bolt from 'assets/bolt.png';
 
 import sky from 'assets/sky.png';
 import clouds1 from 'assets/clouds1.png';
@@ -87,6 +89,24 @@ export const SPINE = {
   scale: 0.1039
 };
 
+/** Shockwave Strike runs its skeleton too (Assets/Scripts/Skills/Actives/WeaponScripts/
+ *  Lightning/LightningAttack.json, the `attack3` Lightning.cs plays). The bolt jitters,
+ *  strobes and fades through slot-colour timelines a sprite strip flattens away.
+ *
+ *  `reach` is how far the skeleton draws above its own origin, in skeleton units -
+ *  Lightning.cs sets the effect's position to the target, so that is the length
+ *  GameScene has to scale to get the bolt in from off the top of the screen. */
+export const BOLT = {
+  key: 'bolt_spine',
+  png: boltPng,
+  atlas: boltAtlas,
+  json: boltJson,
+  page: 'spine_bolt.png',
+  anim: 'attack3',
+  duration: 0.8333,
+  reach: 2867
+};
+
 /** Character art is baked out of the Spine skeletons as horizontal strips playing
  *  `idle`, each at its own skeleton's rate. */
 export interface Sheet {
@@ -108,8 +128,7 @@ export const SHEETS: Record<string, Sheet> = {
   e_ladybug: { url: eLadybug, frameWidth: 36, frameHeight: 38, frames: 30, fps: 30.0 },
   e_boss: { url: eBoss, frameWidth: 150, frameHeight: 174, frames: 16, fps: 30.0 },
   boom: { url: boom, frameWidth: 80, frameHeight: 65, frames: 16, fps: 30.0 },
-  hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 },
-  bolt: { url: bolt, frameWidth: 56, frameHeight: 183, frames: 5, fps: 30.0 }
+  hit: { url: hit, frameWidth: 30, frameHeight: 47, frames: 4, fps: 30.0 }
 };
 
 /** SFX from the Unity project's Assets/Audios/SFX, baked by tools/build_assets.py.

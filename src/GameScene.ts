@@ -16,6 +16,7 @@ import {
   SHEETS,
   SPINE,
   BOLT,
+  CAM,
   SKILL_BY_ID,
   SkillDef,
   WAVES,
@@ -26,7 +27,7 @@ import { Hud } from './Hud';
 
 /** Bubble diameter as a multiple of the plane's longer side. w_shield's circle only fills
  *  ~92% of its texture, so 1.24 draws a ring about 15% wider than the plane. */
-const SHIELD_FIT = 2.5;
+const SHIELD_FIT = 2.8;
 const ORIGIN = { dx: 0, dy: 0 };
 const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
 
@@ -269,7 +270,10 @@ export class GameScene extends Phaser.Scene {
     this.player = this.makeSkeleton();
     this.player.setMix('flying1', FLIP.anim, FLIP.mix).setMix(FLIP.anim, 'flying1', FLIP.mix);
     this.player.play('flying1', true);
-    cam.startFollow(this.player, false, 0.12, 0.12);
+    // CameraMovement.CameraFollowNew lerps at speed 100, so `Time.deltaTime * 100` is
+    // past 1 on any frame the game actually renders: the survival camera is locked to
+    // the plane, not trailing it.
+    cam.startFollow(this.player, false, 1, 1);
     cam.setBackgroundColor('#57bdf9');
 
     // virtual joystick — appears wherever the finger lands
@@ -299,8 +303,10 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'play' || this.joyPointer !== null) return;
     this.joyPointer = p.id;
     this.joyOrigin.set(p.x, p.y);
-    this.joyBase.setPosition(p.x, p.y).setVisible(true);
-    this.joyKnob.setPosition(p.x, p.y).setVisible(true);
+    this.pinTo(this.joyBase, p.x, p.y);
+    this.pinTo(this.joyKnob, p.x, p.y);
+    this.joyBase.setVisible(true);
+    this.joyKnob.setVisible(true);
   }
 
   private onMove(p: Phaser.Input.Pointer) {
@@ -309,7 +315,7 @@ export class GameScene extends Phaser.Scene {
     const len = Math.min(d.length(), 50);
     if (d.length() > 0) d.normalize();
     this.move.copy(d).scale(Math.min(len / 38, 1));
-    this.joyKnob.setPosition(this.joyOrigin.x + d.x * len, this.joyOrigin.y + d.y * len);
+    this.pinTo(this.joyKnob, this.joyOrigin.x + d.x * len, this.joyOrigin.y + d.y * len);
   }
 
   private onUp(p: Phaser.Input.Pointer) {
@@ -413,14 +419,31 @@ export class GameScene extends Phaser.Scene {
     if (this.elapsed > RUN_LIMIT) this.finishRun(true);
   }
 
+  /** Where a screen-pinned object has to sit for the zoomed camera to draw it at `x, y`.
+   *  Zoom scales everything about the camera's midpoint, a scrollFactor of 0 included. */
+  public pinPoint(x: number, y: number): [number, number] {
+    const cam = this.cameras.main;
+    return [cam.width / 2 + (x - cam.width / 2) / cam.zoom, cam.height / 2 + (y - cam.height / 2) / cam.zoom];
+  }
+
+  /** Park a screen-pinned object at the screen coordinates it was laid out in, at the
+   *  size it was laid out at - the HUD is authored in canvas pixels, not world units. */
+  public pinTo(o: Phaser.GameObjects.Components.Transform, x = 0, y = 0) {
+    const [px, py] = this.pinPoint(x, y);
+    o.setPosition(px, py).setScale(1 / this.cameras.main.zoom);
+  }
+
   private drawBackground() {
     const cam = this.cameras.main;
-    this.sky.setPosition(cam.width / 2, cam.height / 2).setDisplaySize(cam.width, cam.height);
+    // the backdrop is pinned too, so it has to be drawn zoom-times larger to still fill
+    const w = cam.width / cam.zoom;
+    const h = cam.height / cam.zoom;
+    this.sky.setPosition(cam.width / 2, cam.height / 2).setDisplaySize(w, h);
     for (const [layer, f] of [
       [this.cloudsFar, 0.12],
       [this.cloudsNear, 0.3]
     ] as [Phaser.GameObjects.TileSprite, number][]) {
-      layer.setPosition(cam.width / 2, cam.height / 2).setSize(cam.width, cam.height);
+      layer.setPosition(cam.width / 2, cam.height / 2).setSize(w, h);
       layer.tilePositionX = cam.scrollX * f;
       layer.tilePositionY = cam.scrollY * f;
     }
@@ -487,7 +510,7 @@ export class GameScene extends Phaser.Scene {
   private spawn(type: string, spread = 0): Enemy {
     const def = ENEMIES[type];
     const cam = this.cameras.main;
-    const dist = Math.hypot(cam.width, cam.height) / 2 + 30;
+    const dist = Math.hypot(cam.width, cam.height) / (2 * cam.zoom) + 30;
     const heading = this.vel.lengthSq() > 900 ? Math.atan2(this.vel.y, this.vel.x) : Math.random() * Math.PI * 2;
     const a = Math.random() < 0.8 ? heading + Phaser.Math.FloatBetween(-1.1, 1.1) : Math.random() * Math.PI * 2;
     const spr = this.add
@@ -1034,6 +1057,8 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- resize
   public resize(width: number, height: number) {
     this.cameras.resize(width, height);
+    // Match the game's field of view: CAM.units of world height, whatever the canvas is.
+    this.cameras.main.setZoom(height / CAM.units / CAM.pxPerUnit);
     // The SDK resizes on its own schedule and can beat create() to the punch - loading
     // the player skeleton keeps the scene in preload noticeably longer than it used to.
     // create() ends by calling this again, so an early call has nothing to do here.

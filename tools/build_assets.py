@@ -146,11 +146,16 @@ SFX = [
     ('sfx_levelup', 'levelUp.mp3'),              # InGameXpHandler
     ('sfx_tap',     'test/popUp.mp3'),
 ]
-# The gameplay loop GameManager.cs starts for this mode, cut to one 8-bar phrase:
-# 139.6 BPM measured off the onset envelope -> 1.72s bars, and the phrase at 27.52s
-# wraps with the least discontinuity of any bar-aligned window in the track. The full
-# 85s track is 1.4MB of source, which an ad cannot spend.
-BGM = ('bgm', 'BGM/trainingMusic.mp3', 27.52, 8 * 4 * 0.43)
+# The gameplay track GameManager.cs starts for this mode, whole: 85.5s against a run of
+# ~95s, so it plays through once and barely wraps. It used to ship as one 8-bar phrase
+# (139.6 BPM off the onset envelope -> 1.72s bars, the window at 27.52s wrapping with the
+# least discontinuity) which cost 83KB against this 419KB - the rest of the bundle got
+# cheap enough to spend it.
+#
+# Bitrate is the knob: mono at 44.1kHz, lame will not go under 32k there, and 32 / 40 /
+# 48 come out at 335 / 419 / 502 KB, a third more again once base64 inlines them. 22kHz
+# would buy a lower bitrate and lose the top end - music through it sounds underwater.
+BGM = ('bgm', 'BGM/trainingMusic.mp3', 40)
 
 for name, rel in SFX:
     src = AUD + rel
@@ -163,17 +168,19 @@ for name, rel in SFX:
                     '-map_metadata', '-1', dst], check=True)
     sizes[name + '.mp3'] = os.path.getsize(dst)
 
-name, rel, start, length = BGM
+name, rel, kbps = BGM
 src = U + '/Audios/' + rel
 if os.path.exists(src) and os.path.getsize(src) > 1000:
     dst = os.path.join(OUT, name + '.mp3')
-    # 44.1kHz: music through a 22kHz sample rate loses its top end and sounds underwater.
+    dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                                '-of', 'csv=p=0', src], capture_output=True, text=True).stdout)
     # 25ms fades top and tail keep the wrap from clicking.
-    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-ss', str(start), '-t', str(length),
-                    '-i', src, '-ac', '1', '-b:a', '48k', '-map_metadata', '-1',
-                    '-af', 'afade=t=in:st=0:d=0.025,afade=t=out:st=%.3f:d=0.025' % (length - 0.025),
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', src,
+                    '-ac', '1', '-b:a', '%dk' % kbps, '-map_metadata', '-1',
+                    '-af', 'afade=t=in:st=0:d=0.025,afade=t=out:st=%.3f:d=0.025' % (dur - 0.025),
                     dst], check=True)
     sizes[name + '.mp3'] = os.path.getsize(dst)
+    print('%-12s %.1fs at %dkbps' % (name, dur, kbps))
 else:
     print('%-12s SKIPPED - missing, or still a Git LFS pointer' % name)
 

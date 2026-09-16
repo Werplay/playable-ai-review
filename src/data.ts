@@ -225,7 +225,8 @@ export interface Sound {
 }
 
 export const SOUNDS: Record<string, Sound> = {
-  /** One 8-bar phrase of the loop GameManager.cs runs for this mode, at its volume. */
+  /** The whole gameplay track GameManager.cs runs for this mode, at its volume: 85.5s
+   *  against a ~95s run, so it plays through rather than looping a phrase. */
   music: { url: bgm, volume: 0.25, gap: 0 },
   shoot: { url: sfxShoot, volume: 0.5, gap: 0.1 },
   hit: { url: sfxHit, volume: 0.15, gap: 0.06 },

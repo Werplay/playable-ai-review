@@ -38,6 +38,11 @@ export class Hud {
   private w = 0;
   private h = 0;
 
+  /** Every container laid out in canvas pixels rather than world ones. The camera runs
+   *  a zoom to hold the game's field of view, and that scales pinned objects too, so
+   *  each of these carries the inverse - see GameScene.pinTo. */
+  private screens: Phaser.GameObjects.Container[] = [];
+
   private root!: Phaser.GameObjects.Container;
   private xpBg!: Phaser.GameObjects.Rectangle;
   private xpFill!: Phaser.GameObjects.Rectangle;
@@ -110,8 +115,16 @@ export class Hud {
     s.tweens.add({ targets: hand, x: 70, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     s.tweens.add({ targets: tap, scale: 1.08, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.intro = s.add.container(0, 0, [hand, tap, sub]).setScrollFactor(0).setDepth(D.overlay);
-    pin(this.root);
-    pin(this.intro);
+    this.pinScreen(this.root);
+    this.pinScreen(this.intro);
+  }
+
+  /** Pin a screen-space root: scrollFactor for scrolling, GameScene.pinTo for zoom. */
+  private pinScreen(c: Phaser.GameObjects.Container) {
+    pin(c);
+    if (!this.screens.includes(c)) this.screens.push(c);
+    this.s.pinTo(c);
+    return c;
   }
 
   showIntro() {
@@ -175,7 +188,7 @@ export class Hud {
   // -------------------------------------------------------------- level up
   openLevelUp() {
     const s = this.s;
-    const c = s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay);
+    const c = this.pinScreen(s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay));
     const dim = s.add.rectangle(0, 0, this.w, this.h, 0x04101d, 0.82).setOrigin(0);
     const header = this.makeHeader();
     const refresh = this.makeRefresh();
@@ -393,7 +406,7 @@ export class Hud {
 
     c.add([dim, icon, title, sub, score, btn]);
     this.overlay = c;
-    pin(c);
+    this.pinScreen(c);
     c.setData('end', true);
     this.layoutEnd();
   }
@@ -416,6 +429,8 @@ export class Hud {
   resize(width: number, height: number) {
     this.w = width;
     this.h = height;
+    this.screens = this.screens.filter((c) => c.scene);
+    for (const c of this.screens) this.s.pinTo(c);
     const pad = 14;
     const barW = width - pad * 2 - 74;
 

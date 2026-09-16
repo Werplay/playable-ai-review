@@ -30,6 +30,7 @@ at 1:18. Win or die, the end card offers the store link.
 | Shockwave Strike (bolt, targeting, cadence) | `Assets/Scripts/Skills/Actives/WeaponScripts/Lightning/` — `Lightning.cs` and the `LightningAttack` skeleton, plus `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Lightning1..5` |
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
 | Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
+| Sea, rocks, and the floor the plane skims | `BGCollectionRevamped/BG_AtlantisDay.asset` (four rock layers, their spread, scale and depth — the set the shipped survival map uses, matched against a screen recording of it), `BG10 - AtlantisDay/*` art, `BG- Misc/horizon.png` and the waterfall set's `Foam_BaseComplete.png` for the waterline, `BackgroundController.cs` (`waterTopY` -3.8, `SetPropInLayer`), `StageManager.cs` (`LOWERBOUNDARY` -4 for an Endless stage, camera floor -19) |
 | HUD icons (time / kills / wave) | `Assets/Survival/*_Icon.png` |
 | Font (Luckiest Guy) | `Assets/GameFont/LuckiestGuy-Regular.ttf`, subset to ASCII and re-encoded woff2 (58 KB → 11 KB) |
 | Store package name | `Assets/google-services.json` |

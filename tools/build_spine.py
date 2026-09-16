@@ -28,16 +28,30 @@ import spineanim, spinestrip
 
 U = '/Users/zeeshan/Desktop/work/Explottens-FtP/ExplottensUnityProject/Assets'
 PL = U + '/SpineObjects/Player/UpdatedPlayer/'
+LI = U + '/Scripts/Skills/Actives/WeaponScripts/Lightning/'
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets')
 
-SKINS = ('default', 'playerPlane1')
-# flying/idle/flip are what the ad plays; MultiCanon poses the gun the starting weapon uses
-ANIMS = ('flying1', 'idle1', 'flip1', 'dash1', 'MultiCanon')
-SCALE = 0.5      # atlas resolution vs. authored size; geometry is unaffected
 PAD = 2          # transparent gutter, stops bilinear filtering bleeding neighbours
 COLORS = 64      # palette size for the packed page
-CENTRE_ON = 'flying1'   # the loop whose art bbox defines "centred on the player"
-ON_SCREEN_W = 67        # matches the width the old baked strip drew at
+
+# Every skeleton the game runs live. `centre` names the animation whose art bbox is put
+# on the origin (the plane rotates about its own position); a skeleton the game places
+# by its own origin - Lightning.cs drops the bolt on the target's transform - leaves it
+# None. Shockwave Strike is the one effect the baker cannot stand in for: its slot-colour
+# fade and 0.83s of jitter live in the skeleton, and a strip of it is either 25 cells of
+# a 4360-unit-tall bolt or a visibly cheaper flash.
+TARGETS = [
+    dict(name='spine_player', skel=PL + 'player.json', atlas=PL + 'player.atlas.txt',
+         skins=('default', 'playerPlane1'),
+         # flying/idle/flip are what the ad plays; MultiCanon poses the starting weapon's gun
+         anims=('flying1', 'idle1', 'flip1', 'dash1', 'MultiCanon'),
+         scale=0.5,           # atlas resolution vs. authored size; geometry is unaffected
+         centre='flying1', on_screen_w=67),
+    dict(name='spine_bolt', skel=LI + 'LightningAttack.json', atlas=LI + 'LightningAttack.atlas.txt',
+         skins=('default',), anims=('attack3',), scale=0.36,
+         # twelve full-height bolt frames live in this skin and attack3 cycles five
+         trim=True, centre=None, on_screen_w=None),
+]
 
 
 
@@ -66,7 +80,7 @@ def parse_atlas(path):
     return page, regions
 
 
-def centre_root(skel, atlas_path):
+def centre_root(skel, atlas_path, anim, skin):
     """Shift the root bone so the flying pose's art bbox sits on the skeleton origin.
 
     The authored root sits off to one side, which would make the plane orbit its own
@@ -76,12 +90,12 @@ def centre_root(skel, atlas_path):
     pages = spinestrip.parse_atlas(atlas_path)
     base = os.path.dirname(atlas_path)
     imgs = {p: Image.open(os.path.join(base, p)).convert('RGBA') for p in pages}
-    dur = spineanim.duration(skel, CENTRE_ON) or 1.0
+    dur = spineanim.duration(skel, anim) or 1.0
     pts = []
     for i in range(12):
         sk = copy.deepcopy(skel)
-        atts, defs = spineanim.pose(sk, CENTRE_ON, dur * i / 12)
-        pts += spinestrip._bounds(spinestrip._collect(sk, pages, imgs, SKINS[-1], atts, defs))
+        atts, defs = spineanim.pose(sk, anim, dur * i / 12)
+        pts += spinestrip._bounds(spinestrip._collect(sk, pages, imgs, skin, atts, defs))
     cx = (min(x for x, _ in pts) + max(x for x, _ in pts)) / 2
     cy = (min(y for _, y in pts) + max(y for _, y in pts)) / 2
     width = max(x for x, _ in pts) - min(x for x, _ in pts)
@@ -91,11 +105,11 @@ def centre_root(skel, atlas_path):
     return width
 
 
-def drop_dead_deforms(skel):
+def drop_dead_deforms(skel, skins):
     """Deform timelines are keyed by skin; the dropped planes' keys would fail to resolve."""
     for anim in skel['animations'].values():
         if 'deform' in anim:
-            anim['deform'] = {k: v for k, v in anim['deform'].items() if k in SKINS}
+            anim['deform'] = {k: v for k, v in anim['deform'].items() if k in skins}
             if not anim['deform']:
                 del anim['deform']
 
@@ -139,7 +153,7 @@ def preview(skel37, out_path):
     tmp = os.path.join(OUT, '.spine_preview_skel.json')
     json.dump(skel37, open(tmp, 'w'))
     try:
-        rows = [spinestrip.strip(tmp, os.path.join(OUT, 'spine_player.atlas'), a, n, 80, SKINS[-1])[0]
+        rows = [spinestrip.strip(tmp, os.path.join(OUT, 'spine_player.atlas'), a, n, 80, 'playerPlane1')[0]
                 for a, n in (('flying1', 8), ('flip1', 5))]
     finally:
         os.remove(tmp)
@@ -152,18 +166,39 @@ def preview(skel37, out_path):
     print('preview -> %s' % out_path)
 
 
-def main():
-    skel = json.load(open(PL + 'player.json', encoding='utf-8'))
-    skel['animations'] = {k: v for k, v in skel['animations'].items() if k in ANIMS}
-    skel['skins'] = {k: v for k, v in skel['skins'].items() if k in SKINS}
+def drop_unused_attachments(skel, anims):
+    """Keep only what the kept animations can actually put on a slot, plus the setup pose.
 
-    width = centre_root(skel, PL + 'player.atlas.txt')
-    drop_dead_deforms(skel)
+    Opt-in per target (`trim`): it is safe where a slot is only ever dressed by an
+    attachment timeline, and wrong for the player, whose skins dress most slots through
+    the setup pose of a skin the game switches to.
+    """
+    keep = {s['name']: {s.get('attachment')} for s in skel['slots']}
+    for name in anims:
+        for slot, timelines in skel['animations'][name].get('slots', {}).items():
+            for key in timelines.get('attachment', []):
+                keep.setdefault(slot, set()).add(key.get('name'))
+    for slots in skel['skins'].values():
+        for slot, atts in list(slots.items()):
+            slots[slot] = {k: v for k, v in atts.items() if k in keep.get(slot, set())}
+
+
+def build(t):
+    """Repack one skeleton into assets/<name>.{json,atlas,png}."""
+    scale, skins, anims = t['scale'], t['skins'], t['anims']
+    skel = json.load(open(t['skel'], encoding='utf-8'))
+    skel['animations'] = {k: v for k, v in skel['animations'].items() if k in anims}
+    skel['skins'] = {k: v for k, v in skel['skins'].items() if k in skins}
+    if t.get('trim'):
+        drop_unused_attachments(skel, anims)
+
+    width = centre_root(skel, t['atlas'], t['centre'], skins[-1]) if t['centre'] else 0
+    drop_dead_deforms(skel, skins)
     skel37 = copy.deepcopy(skel)
     to_38(skel)
 
-    page, regions = parse_atlas(PL + 'player.atlas.txt')
-    src = Image.open(PL + page).convert('RGBA')
+    page, regions = parse_atlas(t['atlas'])
+    src = Image.open(os.path.join(os.path.dirname(t['atlas']), page)).convert('RGBA')
 
     wanted = used_regions(skel)
     missing = wanted - set(regions)
@@ -174,11 +209,11 @@ def main():
     cuts = []
     for name in sorted(wanted):
         p = regions[name]
-        x, y = [int(t) for t in p['xy'].split(',')]
-        w, h = [int(t) for t in p['size'].split(',')]
+        x, y = [int(v) for v in p['xy'].split(',')]
+        w, h = [int(v) for v in p['size'].split(',')]
         rot = p.get('rotate', 'false') == 'true'
         im = src.crop((x, y, x + h, y + w)).rotate(-90, expand=True) if rot else src.crop((x, y, x + w, y + h))
-        sw, sh = max(1, round(w * SCALE)), max(1, round(h * SCALE))
+        sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
         cuts.append((name, im.resize((sw, sh), Image.LANCZOS), p))
 
     # Shelf pack, tallest first, into the narrowest power-of-two page that holds them.
@@ -202,37 +237,44 @@ def main():
     for _, im, _, x, y in placed:
         sheet.paste(im, (x, y))
 
-    out_png = 'spine_player.png'
+    out_png = t['name'] + '.png'
     lines = ['', out_png, 'size: %d,%d' % (pw, ph), 'format: RGBA8888',
              'filter: Linear,Linear', 'repeat: none']
     for name, im, p, x, y in placed:
-        ow, oh = [int(t) for t in p['orig'].split(',')]
-        ox, oy = [int(t) for t in p['offset'].split(',')]
+        ow, oh = [int(v) for v in p['orig'].split(',')]
+        ox, oy = [int(v) for v in p['offset'].split(',')]
         lines += [
             name,
             '  rotate: false',
             '  xy: %d, %d' % (x, y),
             '  size: %d, %d' % (im.width, im.height),
-            '  orig: %d, %d' % (round(ow * SCALE), round(oh * SCALE)),
-            '  offset: %d, %d' % (round(ox * SCALE), round(oy * SCALE)),
+            '  orig: %d, %d' % (round(ow * scale), round(oh * scale)),
+            '  offset: %d, %d' % (round(ox * scale), round(oy * scale)),
             '  index: %s' % p.get('index', '-1')
         ]
 
     sheet.quantize(colors=COLORS, method=Image.FASTOCTREE, dither=Image.NONE) \
         .convert('RGBA').save(os.path.join(OUT, out_png), optimize=True)
-    open(os.path.join(OUT, 'spine_player.atlas'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
+    open(os.path.join(OUT, t['name'] + '.atlas'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
     # ASCII only: GameScene hands this to btoa, which cannot encode code points > 255.
     skeleton = json.dumps(skel, separators=(',', ':'))
     assert skeleton.isascii(), 'skeleton JSON must stay ASCII for btoa'
-    open(os.path.join(OUT, 'spine_player.json'), 'w', encoding='utf-8').write(skeleton)
+    open(os.path.join(OUT, t['name'] + '.json'), 'w', encoding='utf-8').write(skeleton)
 
-    for f in ('spine_player.png', 'spine_player.atlas', 'spine_player.json'):
+    for f in (out_png, t['name'] + '.atlas', t['name'] + '.json'):
         print('%-22s %6.1f KB' % (f, os.path.getsize(os.path.join(OUT, f)) / 1024))
     print('page %dx%d, %d regions, %d animations' % (pw, ph, len(placed), len(skel['animations'])))
-    print('%s spans %.1f skeleton units -> SPINE.scale %.4f draws it %dpx wide'
-          % (CENTRE_ON, width, ON_SCREEN_W / width, ON_SCREEN_W))
-    if '--preview' in sys.argv:
-        preview(skel37, os.path.join(os.path.dirname(OUT), 'spine_preview.png'))
+    if t['centre']:
+        print('%s spans %.1f skeleton units -> SPINE.scale %.4f draws it %dpx wide'
+              % (t['centre'], width, t['on_screen_w'] / width, t['on_screen_w']))
+    return skel37
+
+
+def main():
+    for t in TARGETS:
+        skel37 = build(t)
+        if t['name'] == 'spine_player' and '--preview' in sys.argv:
+            preview(skel37, os.path.join(os.path.dirname(OUT), 'spine_preview.png'))
 
 
 if __name__ == '__main__':

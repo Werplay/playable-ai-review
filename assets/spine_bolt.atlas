@@ -1,0 +1,48 @@
+
+spine_bolt.png
+size: 256,329
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+captain/lightening/Frame 11
+  rotate: false
+  xy: 2, 2
+  size: 69, 164
+  orig: 69, 164
+  offset: 0, 0
+  index: -1
+captain/lightening/Frame 9
+  rotate: false
+  xy: 73, 2
+  size: 74, 162
+  orig: 74, 162
+  offset: 0, 0
+  index: -1
+captain/lightening/Frame 6
+  rotate: false
+  xy: 149, 2
+  size: 58, 160
+  orig: 58, 160
+  offset: 0, 0
+  index: -1
+captain/lightening/Frame 2
+  rotate: false
+  xy: 2, 168
+  size: 55, 159
+  orig: 55, 159
+  offset: 0, 0
+  index: -1
+captain/lightening/Frame 4
+  rotate: false
+  xy: 59, 168
+  size: 49, 159
+  orig: 49, 159
+  offset: 0, 0
+  index: -1
+strobe
+  rotate: false
+  xy: 110, 168
+  size: 18, 18
+  orig: 18, 18
+  offset: 0, 0
+  index: -1

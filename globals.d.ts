@@ -6,3 +6,8 @@ declare module 'assets/spine_player.json' {
   const src: string;
   export default src;
 }
+
+declare module 'assets/spine_bolt.json' {
+  const src: string;
+  export default src;
+}

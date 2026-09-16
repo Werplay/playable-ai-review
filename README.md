@@ -26,6 +26,7 @@ at 1:18. Win or die, the end card offers the store link.
 | Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
 | Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
 | Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, baked to animated sprite strips |
+| Shockwave Strike (bolt, targeting, cadence) | `Assets/Scripts/Skills/Actives/WeaponScripts/Lightning/` — `Lightning.cs` and the `LightningAttack` skeleton, plus `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Lightning1..5` |
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
 | Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
 | HUD icons (time / kills / wave) | `Assets/Survival/*_Icon.png` |
@@ -34,9 +35,12 @@ at 1:18. Win or die, the end card offers the store link.
 
 ### How the characters were made
 
-There is no Spine runtime in the bundle — `player.json` alone is 3.2 MB, which is
-larger than the whole ad budget. Instead the skeletons are evaluated offline and
-baked to sprite strips:
+Two skeletons run live on the Spine runtime, trimmed and repacked by
+`tools/build_spine.py`: the player (it rolls through `flip1` on a direction switch) and
+the Shockwave Strike bolt (its jitter, strobe and fade are all slot-colour timelines a
+strip flattens away). Everything else is evaluated offline and baked to sprite strips —
+shipping every skeleton is not an option, `player.json` alone is 3.2 MB against a whole
+ad budget of ~2 MB:
 
 1. Sample the skeleton's own animation at `duration x 30` evenly-spaced times (the
    player plays `flying1`, everyone else an `idle`), interpolating bone

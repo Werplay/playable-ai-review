@@ -5,6 +5,8 @@ import {
   BOSS_AT,
   ENEMIES,
   EnemyDef,
+  EVO,
+  EVO_SKILL,
   GEMS,
   IMAGES,
   SOUNDS,
@@ -12,6 +14,7 @@ import {
   PLAYER,
   MIN_ON_SCREEN,
   RUN_LIMIT,
+  SHIELD,
   SKILLS,
   SHEETS,
   SPINE,
@@ -26,11 +29,11 @@ import {
 } from './data';
 import { Hud } from './Hud';
 
-/** Bubble diameter as a multiple of the plane's longer side. w_shield's circle only fills
- *  ~92% of its texture, so 1.24 draws a ring about 15% wider than the plane. */
-const SHIELD_FIT = 2.8;
 const ORIGIN = { dx: 0, dy: 0 };
-const DEPTH = { bg: 0, pickup: 5, enemy: 10, player: 20, proj: 30, fx: 40 };
+/** Spoke counts of the three sunburst layers; see startEvo. */
+const EVO_RAYS = [18, 24, 30];
+
+const DEPTH = { bg: 0, pickup: 5, evo: 6, enemy: 10, player: 20, proj: 30, fx: 40 };
 
 /** Unity's y axis points up and its unit is CAM.pxPerUnit of this game's pixels. */
 const worldY = (unity: number) => -unity * CAM.pxPerUnit;
@@ -84,6 +87,10 @@ interface Proj {
   orbitSpeed?: number;
   /** boomerang params */
   t?: number;
+  /** how far from its own centre this one hits, in world px */
+  r: number;
+  /** seconds before it can hit the same enemy again; only read when `hits` is set */
+  gate: number;
   /** per-enemy re-hit gate for multi-hit weapons */
   hits?: Record<number, number>;
 }
@@ -152,6 +159,15 @@ export class GameScene extends Phaser.Scene {
   private boss: Enemy | null = null;
   private bossDefeated = false;
   private hurtCd = 0;
+  /** Kitty Rage: seconds left, the volley clock, and the volley counter its spiral
+   *  offset comes from. `evoT > 0` is the whole of "is the rage running". */
+  private evoT = 0;
+  private evoCd = 0;
+  private evoBurst = 0;
+  private evoFx?: Phaser.GameObjects.Container;
+  private evoRing?: Phaser.GameObjects.Arc;
+  /** Level-ups earned while a card is already up, or while the rage is running. */
+  private pendingLevels = 0;
   /** Per-sound retrigger gate, keyed like SOUNDS; see `sfx`. */
   private sfxNext: Record<string, number> = {};
   private regen = 0;
@@ -358,7 +374,7 @@ export class GameScene extends Phaser.Scene {
     return Math.pow(1.1, this.lvlOf('attack'));
   }
   private get speedMul() {
-    return Math.pow(1.1, this.lvlOf('speed'));
+    return Math.pow(1.1, this.lvlOf('speed')) * (this.evoT > 0 ? EVO.speedMul : 1);
   }
   private get armorMul() {
     return Math.pow(0.9, this.lvlOf('armor'));
@@ -390,6 +406,7 @@ export class GameScene extends Phaser.Scene {
       this.hp += this.maxHp - before;
     }
     if (id === 'shield' || id === 'propeller') this.buildOrbit(id);
+    if (id === 'evo') this.startEvo();
   }
 
   /** Boss bar feed for the HUD. */
@@ -406,6 +423,7 @@ export class GameScene extends Phaser.Scene {
     const pool = SKILLS.filter((s) => (this.owned.get(s.id)?.level ?? 0) < s.max);
     const weapons = pool.filter((s) => s.kind === 'weapon');
     const out: SkillDef[] = [];
+    if (this.level >= EVO.offerAt && !this.owned.has('evo')) out.push(EVO_SKILL);
     const activeCount = [...this.owned.values()].filter((o) => o.def.kind === 'weapon').length;
     if (activeCount < 4 && weapons.length) out.push(Phaser.Utils.Array.GetRandom(weapons));
     const rest = Phaser.Utils.Array.Shuffle(pool.filter((s) => !out.includes(s)));
@@ -425,6 +443,7 @@ export class GameScene extends Phaser.Scene {
     this.elapsed += dt;
     this.measurePlane();
     this.updatePlayer(dt);
+    this.updateEvo(dt);
     this.updateSpawner(dt);
     this.updateEnemies(dt);
     this.updateWeapons(dt);
@@ -583,12 +602,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.spawnCd -= dt;
-    if (this.enemies.length >= wave.cap) return;
+    const rage = this.evoT > 0;
+    if (this.enemies.length >= wave.cap * (rage ? EVO.capMul : 1)) return;
     // top the arena straight back up when the loadout has cleared it out
     const starved = this.enemies.length < MIN_ON_SCREEN;
     if (this.spawnCd > 0 && !starved) return;
-    this.spawnCd = wave.interval;
-    const burst = starved ? wave.burst + 2 : wave.burst;
+    this.spawnCd = wave.interval * (rage ? EVO.intervalMul : 1);
+    const burst = (starved ? wave.burst + 2 : wave.burst) + (rage ? EVO.burstBonus : 0);
     for (let i = 0; i < burst; i++) {
       this.spawn(Phaser.Utils.Array.GetRandom(wave.pool), (i / burst) * Math.PI * 2);
     }
@@ -695,6 +715,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damagePlayer(amount: number) {
+    if (this.evoT > 0) return; // Berserk carries its own invincibility
     this.sfx('hurt');
     this.hurtCd = PLAYER.hurtCooldown;
     this.hp -= amount * this.armorMul;
@@ -823,8 +844,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Banks the pick rather than opening it: a rage run can clear five levels at once,
+   *  and stacking cards over the spray (or over each other) would eat every one of them. */
   private levelUp() {
     if (this.state === 'over') return;
+    this.pendingLevels = Math.min(this.pendingLevels + 1, 3);
+    this.openPick();
+  }
+
+  private openPick() {
+    if (this.state !== 'play' || this.evoT > 0 || this.pendingLevels <= 0) return;
+    this.pendingLevels--;
     this.state = 'levelup';
     this.move.set(0, 0);
     this.vel.set(0, 0);
@@ -838,6 +868,7 @@ export class GameScene extends Phaser.Scene {
   public closeLevelUp(id: string) {
     this.addSkill(id);
     this.state = this.hp > 0 ? 'play' : 'over';
+    this.openPick();
   }
 
   // ---------------------------------------------------------------- weapons
@@ -855,6 +886,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateWeapons(dt: number) {
+    if (this.evoT > 0) {
+      this.evoCd -= dt;
+      while (this.evoCd <= 0) {
+        this.evoCd += EVO.rate;
+        this.evoVolley();
+      }
+      if ((this.evoT -= dt) <= 0) this.endEvo();
+    }
     for (const o of this.owned.values()) {
       if (o.def.kind !== 'weapon') continue;
       if (o.def.id === 'shield' || o.def.id === 'propeller') continue; // persistent orbits
@@ -958,7 +997,9 @@ export class GameScene extends Phaser.Scene {
       life,
       pierce,
       kind: 'straight',
-      spin
+      spin,
+      r: 10,
+      gate: 0.3
     };
     this.projs.push(p);
     return p;
@@ -1005,6 +1046,130 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // ------------------------------------------------------------- Kitty Rage
+  /** Berserk: ten seconds of the sky turned orange and six bolts a tenth of a second
+   *  going out in every direction (Berserk.cs + SpecialSkill.Enable).
+   *
+   *  Unity hangs a whole Spine skeleton behind the plane for the backdrop - an orange
+   *  quad, three sunburst layers turning at different rates and a pair of soft strobes,
+   *  all additive at around 8% alpha. That is a 512x512 page and a skeleton for two
+   *  shapes, so this draws both instead: the spokes once into a texture, the glow into a
+   *  canvas gradient. Nothing new ships in the bundle for it.
+   *
+   *  The backdrop sits at DEPTH.evo, over the sea and over the gems - which is why the
+   *  loot the rage drops only appears when it ends, the way the game plays it. */
+  private startEvo() {
+    this.evoT = EVO.duration;
+    this.evoCd = 0;
+    this.sfx('levelup');
+    this.hud.banner('KITTY RAGE!');
+    this.cameras.main.shake(300, 0.008);
+
+    if (!this.textures.exists('evo_rays0')) {
+      // Three different spoke counts rather than three copies of one: layers that share
+      // a count drift into phase every couple of seconds and the fine shimmer collapses
+      // into one set of fat wedges.
+      const r = 256;
+      EVO_RAYS.forEach((spokes, i) => {
+        const g = this.make.graphics({ x: 0, y: 0 }, false);
+        g.fillStyle(0xffffff, 1);
+        for (let n = 0; n < spokes; n++) {
+          const a = (n / spokes) * Math.PI * 2;
+          const half = Math.PI / spokes / 3;
+          g.beginPath();
+          g.moveTo(r, r);
+          g.lineTo(r + Math.cos(a - half) * r, r + Math.sin(a - half) * r);
+          g.lineTo(r + Math.cos(a + half) * r, r + Math.sin(a + half) * r);
+          g.closePath();
+          g.fillPath();
+        }
+        g.generateTexture(`evo_rays${i}`, r * 2, r * 2);
+        g.destroy();
+      });
+
+      const tex = this.textures.createCanvas('evo_glow', 256, 256);
+      const ctx = tex?.getContext();
+      if (ctx) {
+        const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, 'rgba(255,252,190,1)');
+        grad.addColorStop(0.45, 'rgba(255,220,90,0.55)');
+        grad.addColorStop(1, 'rgba(255,190,40,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 256, 256);
+        tex!.refresh();
+      }
+    }
+
+    const base = this.add.rectangle(0, 0, 8, 8, 0xfa7d00).setOrigin(0.5);
+    const glow = this.add.image(0, 0, 'evo_glow');
+    // turning at the rates the berserk skeleton's own ray bones do, which is what makes
+    // three stacked sunbursts read as a shimmer rather than a pinwheel
+    const rays = [-90, -180, 90].map((deg, i) =>
+      this.add
+        .image(0, 0, `evo_rays${i}`)
+        .setTint(0xfff0a0)
+        .setAlpha(0.1)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setData('spin', Phaser.Math.DegToRad(deg))
+    );
+    this.evoFx = this.add.container(0, 0, [base, glow, ...rays]).setDepth(DEPTH.evo);
+    this.evoRing = this.add.circle(0, 0, 40).setStrokeStyle(4, 0xffffff, 0.9).setDepth(DEPTH.player - 1);
+  }
+
+  private endEvo() {
+    this.evoT = 0;
+    // A hard cut, the way the game ends it: the orange is simply gone on the next frame
+    // and the gems it was covering are all there at once.
+    this.evoFx?.destroy(true);
+    this.evoRing?.destroy();
+    this.evoFx = undefined;
+    this.evoRing = undefined;
+    // The gem carpet the rage was covering is the payoff shot; a card over it the frame
+    // the orange cuts hides the one thing the whole ten seconds was for.
+    this.time.delayedCall(1200, () => this.openPick());
+  }
+
+  /** The backdrop is drawn in world space around the plane rather than pinned to the
+   *  camera, so it needs no zoom maths - only to stay bigger than the view. */
+  private updateEvo(dt: number) {
+    if (!this.evoFx) return;
+    const view = this.cameras.main.worldView;
+    const cx = this.player.x + this.plane.dx;
+    const cy = this.player.y + this.plane.dy;
+    this.evoFx.setPosition(cx, cy);
+
+    const [base, glow, ...rays] = this.evoFx.list as Phaser.GameObjects.Components.Transform[];
+    // the plane can sit anywhere in the view when the camera is against its floor, so
+    // the cover is measured from the far corner, not from half the screen
+    const reach =
+      Math.max(Math.abs(view.left - cx), Math.abs(view.right - cx)) +
+      Math.max(Math.abs(view.top - cy), Math.abs(view.bottom - cy));
+    (base as Phaser.GameObjects.Rectangle).setSize(reach * 2, reach * 2);
+    (glow as Phaser.GameObjects.Image).setDisplaySize(view.height * 0.75, view.height * 0.75);
+    for (const r of rays as Phaser.GameObjects.Image[]) {
+      r.setDisplaySize(reach * 2, reach * 2);
+      r.rotation += (r.getData('spin') as number) * dt;
+    }
+
+    const ring = this.evoRing!;
+    ring.setPosition(cx, cy);
+    ring.setScale(((this.plane.size || 80) / 80) * (1.6 + Math.sin(this.elapsed * 9) * 0.08));
+  }
+
+  /** One volley: six bolts out on the compass, the whole fan turned a third of the gap
+   *  between them each time so successive volleys spiral (Berserk.ShootSequence). */
+  private evoVolley() {
+    const step = (Math.PI * 2) / EVO.bullets;
+    const base = this.evoBurst++ * (step / 3);
+    const dmg = PLAYER.attack * this.atkMul * EVO.damageMul;
+    for (let i = 0; i < EVO.bullets; i++) {
+      const p = this.shoot('w_plasma', base + step * i, EVO.speed * this.projSpeedMul, dmg, EVO.life, 999, 1);
+      // PeircingDepth 0: a bolt is never spent, it just re-gates per enemy (HitCoolDown)
+      p.hits = {};
+    }
+    this.sfx('shoot', 0.25);
+  }
+
   /** Measures where the plane art sits relative to the plane's position, in world px, plus
    *  the longer side of the box around it. The art hangs well above the skeleton's origin
    *  and swings around it as the plane turns, so anything that wraps the plane is placed
@@ -1041,13 +1206,18 @@ export class GameScene extends Phaser.Scene {
     const lvl = this.lvlOf(id);
     if (!lvl) return;
     const count = id === 'shield' ? 1 : 1 + lvl;
+    // Chaos Guard's level *is* its reach: CollisionRadius grows 1 -> 3 world units across
+    // the five, and the art is drawn to it, so an enemy touching the ring is inside it.
+    // The floor only ever bites on level 1 - it is there so the plane fits in its bubble.
+    const units = SHIELD.radius[Math.min(lvl, SHIELD.radius.length) - 1] * SHIELD.draw;
+    const shieldR = Math.max(units, SHIELD.minRadius) * CAM.pxPerUnit;
     for (let i = 0; i < count; i++) {
       const spr = this.add
         .image(this.player.x, this.player.y, id === 'shield' ? 'w_shield' : 'w_propeller')
         .setDepth(DEPTH.proj - 1)
         .setScale(0.75);
       if (id === 'shield') {
-        const d = (this.plane.size || 80) * SHIELD_FIT * (1 + (lvl - 1) * 0.15);
+        const d = (shieldR * 2) / SHIELD.fill;
         spr.setDisplaySize(d, d).setAlpha(0.85);
       }
       this.projs.push({
@@ -1059,6 +1229,8 @@ export class GameScene extends Phaser.Scene {
         pierce: 999,
         kind: 'orbit',
         spin: id === 'shield' ? 1.4 : 14,
+        r: id === 'shield' ? shieldR : 10,
+        gate: id === 'shield' ? SHIELD.hitCooldown : 0.3,
         orbitAngle: (i / count) * Math.PI * 2,
         orbitRadius: id === 'shield' ? 0 : 58 + lvl * 4,
         orbitSpeed: id === 'shield' ? 0 : 3.1,
@@ -1109,11 +1281,11 @@ export class GameScene extends Phaser.Scene {
 
       // hit test
       for (const e of [...this.enemies]) {
-        const hitR = e.def.radius + 10;
+        const hitR = e.def.radius + p.r;
         if (Phaser.Math.Distance.Squared(e.spr.x, e.spr.y, p.spr.x, p.spr.y) > hitR * hitR) continue;
         if (p.hits) {
           if ((p.hits[e.id] ?? 0) > now) continue;
-          p.hits[e.id] = now + 0.3;
+          p.hits[e.id] = now + p.gate;
         }
         this.hurtEnemy(e, p.dmg, p.spr.x, p.spr.y);
         if (p.kind === 'bounce') {
@@ -1137,6 +1309,7 @@ export class GameScene extends Phaser.Scene {
   // ------------------------------------------------------------------- end
   private finishRun(won: boolean) {
     if (this.state === 'over') return;
+    if (this.evoT > 0) this.endEvo();
     this.state = 'over';
     this.move.set(0, 0);
     this.joyBase.setVisible(false);

@@ -48,6 +48,7 @@ import wYarnball from 'assets/w_yarnball.png';
 import wPropeller from 'assets/w_propeller.png';
 import wFish from 'assets/w_fish.png';
 import wShield from 'assets/w_shield.png';
+import wPlasma from 'assets/w_plasma.png';
 
 import iMulticanon from 'assets/i_multicanon.png';
 import iCroissant from 'assets/i_croissant.png';
@@ -65,6 +66,7 @@ import iMagnet from 'assets/i_magnet.png';
 import iXp from 'assets/i_xp.png';
 import iCooldown from 'assets/i_cooldown.png';
 import iBulletspeed from 'assets/i_bulletspeed.png';
+import iBerserk from 'assets/i_berserk.png';
 
 import bgm from 'assets/bgm.mp3';
 import sfxShoot from 'assets/sfx_shoot.mp3';
@@ -260,6 +262,7 @@ export const IMAGES: Record<string, string> = {
   w_propeller: wPropeller,
   w_fish: wFish,
   w_shield: wShield,
+  w_plasma: wPlasma,
   i_multicanon: iMulticanon,
   i_croissant: iCroissant,
   i_lightning: iLightning,
@@ -276,6 +279,7 @@ export const IMAGES: Record<string, string> = {
   i_xp: iXp,
   i_cooldown: iCooldown,
   i_bulletspeed: iBulletspeed,
+  i_berserk: iBerserk,
   hud_time: hudTime,
   hud_kills: hudKills,
   hud_wave: hudWave
@@ -361,7 +365,7 @@ export const RUN_LIMIT = 110; // hard stop so the ad always reaches its end card
 export const MIN_ON_SCREEN = 10;
 
 // --- skills ---------------------------------------------------------------
-export type SkillKind = 'weapon' | 'passive';
+export type SkillKind = 'weapon' | 'passive' | 'special';
 
 export interface SkillDef {
   id: string;
@@ -428,4 +432,71 @@ export const SKILLS: SkillDef[] = [
   }
 ];
 
-export const SKILL_BY_ID = new Map(SKILLS.map((s) => [s.id, s]));
+/** Chaos Guard - ActiveSkillsData.csv rows `Shield1`..`Shield5`.
+ *
+ *  `CollisionRadius` is what the bubble hits at, in world units, and it is the number
+ *  that grows with the level - the rows read "Damage Increased. Area Increased" and this
+ *  is the area. The playable draws the bubble at that radius too, so what you can see is
+ *  what an enemy has to touch; the art's circle only fills ~92% of its texture.
+ *
+ *  `HitCoolDown` is how long an enemy already inside it waits to be hit again - a full
+ *  second, where every other multi-hit weapon here re-gates in 0.3s. */
+export const SHIELD = {
+  /** CollisionRadius per level, world units */
+  radius: [1, 1.5, 2, 2.5, 3],
+  /** Floor, world units. The ring is pinned to the plane art's centre, and that centre
+   *  is measured from the previous frame's pose (see measurePlane) - through a `flip1`
+   *  roll it lags the drawn plane by ~24px. Under about this radius, on a plane 2.26
+   *  units long, the pilot's crown hangs outside his own bubble - the art's bounding box
+   *  is centred low (it takes in the gear under the fuselage), so the clearance that
+   *  matters is measured from the crown, not from the box. */
+  minRadius: 2.4,
+  hitCooldown: 1,
+  /** how much of w_shield's texture the circle itself fills */
+  fill: 0.92,
+  /** Not from the game: the table's level-1 radius is 1 unit against a 2.26-unit plane,
+   *  which draws a ring entirely underneath the plane art - a shield you cannot see is a
+   *  shield nobody believes they are touching. The whole curve is scaled up until level 1
+   *  clears the plane; the 1 : 1.5 : 2 : 2.5 : 3 proportions are what actually matter. */
+  draw: 1.7
+};
+
+/** Kitty Rage - the Berserk special skill (Prefabs/Skills/Specials/Berserk.prefab for
+ *  the name and blurb, Resources/CSV/Equipment/SpecialSkillData.csv row `Berserk1` for
+ *  the 10 second duration, SpecialSkillBulletData.csv's row of the same name for the
+ *  bullet). Berserk.cs sprays `bullets` at a time, `rate` apart, each volley turned a
+ *  third of the gap between them so the spray spirals - 100 volleys x 0.1s is exactly
+ *  the 10s the stats table gives it.
+ *
+ *  Damage is (BaseDamage 0 + attack) x PlayerDamageMultipliyer, so 50x a normal shot.
+ *  MaxRange is 100 units, three screens out; a second of flight already clears the view,
+ *  which is the difference between ~60 bolts alive and ~170. */
+export const EVO = {
+  duration: 10,
+  bullets: 6,
+  rate: 0.1,
+  damageMul: 50,
+  speed: 35 * CAM.pxPerUnit,
+  life: 1,
+  /** PlayerMovement.BerserkMul */
+  speedMul: 2,
+  /** The spray clears the sky in two volleys, so the swarm has to keep coming for the
+   *  ten seconds to read as a massacre rather than an empty orange screen. */
+  intervalMul: 0.35,
+  burstBonus: 4,
+  capMul: 2,
+  /** offered on every pick from this level until it is taken - the ad needs the beat */
+  offerAt: 3
+};
+
+/** Kept out of SKILLS: it is dealt by hand rather than rolled, and only once. */
+export const EVO_SKILL: SkillDef = {
+  id: 'evo',
+  title: 'Kitty Rage',
+  desc: 'Unleash Hell upon your enemies!',
+  icon: 'i_berserk',
+  kind: 'special',
+  max: 1
+};
+
+export const SKILL_BY_ID = new Map([...SKILLS, EVO_SKILL].map((s) => [s.id, s]));

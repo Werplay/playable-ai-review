@@ -1,0 +1,2 @@
+# Install only when DOCX output is desired. The reviewer itself uses the Python standard library.
+python-docx==1.2.0

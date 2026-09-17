@@ -155,3 +155,10 @@ Babel assume every spread target is an array, which silently turns
 that way at 400x720, 780x400, 768x1024, 1024x768 and 320x640 plus a mid-run rotation:
 60 fps throughout, no console or page errors, and no network request of any kind
 leaving the page.
+# Local AI code review
+
+Private, on-demand review with local Ollama is available through `./scripts/ai-review`. See [docs/ai-review.md](docs/ai-review.md) for setup, privacy guarantees, indexing details, and usage. This repository's remote default branch is `origin/master`, so the usual command is:
+
+```sh
+./scripts/ai-review --base origin/master
+```

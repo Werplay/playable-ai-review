@@ -51,3 +51,9 @@ docs/.vuepress/dist
 # build tooling output
 build-logs
 spine_preview.png
+
+# local AI review artifacts
+/ai-review-report/
+/.venv-ai-review/
+*.ai-review.sqlite3
+/.ai-review-index/

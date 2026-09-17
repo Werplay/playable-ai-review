@@ -93,6 +93,9 @@ flat(A + 'bread.png', 'w_croissant.png', 34)
 flat(A + 'ball.png', 'w_yarnball.png', 32)
 flat(A + 'protonBullet.png', 'w_propeller.png', 34)
 flat(A + 'fish.png', 'w_fish.png', 36)
+# Berserk's bullet (SpecialSkillBulletData.csv `Berserk1` Sprite), the plasma bolt
+# Berserk.cs sprays six at a time.
+flat(A + 'plasmaRed.png', 'w_plasma.png', 42)
 flat('/Sprites/Arsenal/shield.png', 'w_shield.png', 160, 32)
 
 # ---- bullet hit spark ----------------------------------------------------
@@ -203,6 +206,7 @@ ICONS = [
     ('xp',         '/Resources/UI/Item/PassiveSprites/Experience.png'),
     ('cooldown',   '/Resources/UI/Item/PassiveSprites/Energycube 1.png'),
     ('bulletspeed','/Resources/UI/Item/PassiveSprites/Bulletspeed.png'),
+    ('berserk',   '/Resources/UI/Item/PassiveSprites/BerserkIcon.png'),
 ]
 for name, rel in ICONS:
     flat(rel, 'i_%s.png' % name, 60, 48)

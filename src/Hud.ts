@@ -19,6 +19,8 @@ const CARD = {
   radius: 16,
   weapon: { glow: 0x6cf542, wedge: 0x4bbf27, title: '#ffffff' },
   passive: { glow: 0x9fe8ff, wedge: 0x2f7fd4, title: '#ffffff' },
+  /** Kitty Rage is the one special in the deck; it gets the rage's own orange. */
+  special: { glow: 0xffb638, wedge: 0xe06a00, title: '#ffe9a8' },
   slot: 0x1b2036,
   pipOn: 0xffc93c,
   pipOff: 0x8c93a8
@@ -255,7 +257,7 @@ export class Hud {
     const s = this.s;
     const w = CARD.w;
     const h = CARD.h;
-    const tone = def.kind === 'weapon' ? CARD.weapon : CARD.passive;
+    const tone = CARD[def.kind];
     const x0 = -w / 2;
     const y0 = -h / 2;
 

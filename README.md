@@ -13,8 +13,11 @@ game's own font, and code inlined.
 Drag anywhere to fly. The plane auto-fires at the nearest enemy. Cat planes and
 bug-bots close in from every side in timed waves; kills drop XP gems that magnet
 in, the XP bar fills, and each level-up pauses the run for a pick of three
-upgrades. A HammerHead mini-boss joins at 0:44 and the vaderboss closes the run
-at 1:18. Win or die, the end card offers the store link.
+upgrades. From level 3 every pick offers **Kitty Rage** until it is taken: ten
+seconds of the sky turned orange, the plane doubled in speed and untouchable, and six
+plasma bolts a tenth of a second going out in every direction at fifty times a normal
+shot. A HammerHead mini-boss joins at 0:44 and the vaderboss closes the run at 1:18.
+Win or die, the end card offers the store link.
 
 ## What came from the Unity project
 
@@ -27,6 +30,8 @@ at 1:18. Win or die, the end card offers the store link.
 | Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
 | Camera field of view and follow | `Assets/Scenes/GameplayScene.unity` (perspective, 60° vertical FOV), `Assets/Scripts/Stage/StageManager.cs` (`SetCamZoom(28, 1.5f)` = 32.3 world units of height), `Assets/Scripts/Camera/CameraMovement.cs` (locked to the plane, not trailing) |
 | Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, baked to animated sprite strips |
+| Chaos Guard's reach, damage step and re-hit gate | `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Shield1`..`Shield5` — `CollisionRadius` 1 → 3 world units is the bubble, `HitCoolDown` 1 s is how long an enemy inside it waits to be hit again |
+| Kitty Rage (the Berserk special) | `Assets/Prefabs/Skills/Specials/Berserk.prefab` (title, blurb), `Scripts/Skills/Specials/Berserk.cs` and `Skills/Skill/SpecialSkill.cs` (the spiralling six-bolt volley, `EnableBerserkMode`), `Resources/CSV/Equipment/SpecialSkillData.csv` + `SpecialSkillBulletData.csv` rows `Berserk1` (10 s, 50x damage, `plasmaRed`) |
 | Shockwave Strike (bolt, targeting, cadence) | `Assets/Scripts/Skills/Actives/WeaponScripts/Lightning/` — `Lightning.cs` and the `LightningAttack` skeleton, plus `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Lightning1..5` |
 | Gems, coins, meat, magnet | `Assets/Sprites/Collectibles/Collectible.png` |
 | Sky gradient, cloud layers | `Assets/BG/BGDataNew/.../BG_Day_SpriteSheet.png`, `BGDataOld/.../clouds*.png` |
@@ -75,6 +80,27 @@ One deliberate substitution: vaderboss ships two idle loops and the strip uses t
 shorter `idle2` (0.53 s) rather than `idle` (1.0 s). Same 30 fps, half the frames —
 `idle` alone was 126 KB, which did not fit.
 
+### Kitty Rage
+
+Unity hangs a whole Spine skeleton behind the plane for the rage backdrop
+(`SpineObjects/BerserkNew`): an orange quad, three sunburst layers turning at different
+rates and a pair of soft strobes, all additive at around 8% alpha. That is a 512x512
+page and a skeleton for two shapes, so `startEvo` draws both instead — the spokes once
+into a generated texture, the core glow into a canvas gradient. Nothing new ships in the
+bundle for it beyond the bolt and the skill icon (7 KB between them). The three layers
+carry different spoke counts (18 / 24 / 30) rather than three copies of one: layers that
+share a count drift into phase every couple of seconds and the fine shimmer collapses
+into a pinwheel.
+
+The backdrop is drawn at its own depth over the sea *and over the gems*, which is why
+the loot the rage drops only appears when it ends — the same reveal the game plays.
+
+Two things are the ad's rather than the game's: the swarm is thickened for the ten
+seconds (`EVO.intervalMul` / `burstBonus` / `capMul`) or the spray empties the sky in two
+volleys, and the level-ups a rage banks are queued as separate picks, capped at three,
+the first of them held back 1.2 s so the gem carpet is not covered by a card the frame
+the orange cuts.
+
 ## Tuning that is *not* from the game
 
 A real Survival run lasts 10–20 minutes; this ad has ~95 seconds. Three knobs are
@@ -84,6 +110,14 @@ deliberately different and are marked as such in `src/data.ts`:
 - `PLAYER.health` is 140 rather than 100.
 - Enemy `speed` values are raised so the swarm can close on a 250 px/s plane in a
   camera-sized arena.
+- `SHIELD.draw` scales Chaos Guard's whole radius curve up by 1.7, and `SHIELD.minRadius`
+  floors it at 2.4 units. The table's level-1 radius is 1 world unit against a 2.26-unit
+  plane: drawn honestly that is a ring underneath the plane art, and even once it is
+  visible the plane bursts out of it through a `flip1` roll, where the pose swells and
+  the art centre the ring is pinned to lags a frame behind. The floor only bites on
+  levels 1–2. The bubble is drawn at whatever it hits at, so the ring on screen *is* the
+  hitbox at every level, and the table's 1 : 1.5 : 2 : 2.5 : 3 proportions are kept
+  above the floor.
 
 ## Layout
 
